@@ -13,6 +13,7 @@ public class VerifyTwoFactorResponse {
     private AccountStatus status;
     private Instant lastLoginAt;
     private boolean authenticated;
+    private String refreshToken;
     private String message;
 
     public VerifyTwoFactorResponse() {
@@ -64,6 +65,14 @@ public class VerifyTwoFactorResponse {
 
     public void setAuthenticated(boolean authenticated) {
         this.authenticated = authenticated;
+    }
+
+    public String getRefreshToken() {
+        return refreshToken;
+    }
+
+    public void setRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
     }
 
     public String getMessage() {

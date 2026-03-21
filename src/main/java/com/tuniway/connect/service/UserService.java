@@ -8,21 +8,27 @@ import com.tuniway.connect.model.dto.VerifyEmailRequest;
 import com.tuniway.connect.model.dto.VerifyEmailResponse;
 import com.tuniway.connect.model.dto.VerifyTwoFactorRequest;
 import com.tuniway.connect.model.dto.VerifyTwoFactorResponse;
+import com.tuniway.connect.model.dto.RefreshRequest;
+import com.tuniway.connect.model.dto.RefreshResponse;
 import com.tuniway.connect.model.entity.AccountStatus;
 import com.tuniway.connect.model.entity.AdminProfile;
 import com.tuniway.connect.model.entity.ClientProfile;
 import com.tuniway.connect.model.entity.EmailVerificationCode;
 import com.tuniway.connect.model.entity.EmployeeProfile;
+import com.tuniway.connect.model.entity.RefreshToken;
 import com.tuniway.connect.model.entity.Role;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.repository.AdminProfileRepository;
 import com.tuniway.connect.repository.ClientProfileRepository;
 import com.tuniway.connect.repository.EmailVerificationCodeRepository;
 import com.tuniway.connect.repository.EmployeeProfileRepository;
+import com.tuniway.connect.repository.RefreshTokenRepository;
 import com.tuniway.connect.repository.UserRepository;
 
 import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -36,6 +42,7 @@ public class UserService {
     private final ClientProfileRepository clientProfileRepository;
     private final AdminProfileRepository adminProfileRepository;
     private final EmployeeProfileRepository employeeProfileRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final EmailService emailService;
     private final TwoFactorChallengeService twoFactorChallengeService;
     private final TotpService totpService;
@@ -46,6 +53,7 @@ public class UserService {
             ClientProfileRepository clientProfileRepository,
             AdminProfileRepository adminProfileRepository,
             EmployeeProfileRepository employeeProfileRepository,
+                RefreshTokenRepository refreshTokenRepository,
             EmailService emailService,
             TwoFactorChallengeService twoFactorChallengeService,
             TotpService totpService
@@ -55,6 +63,7 @@ public class UserService {
         this.clientProfileRepository = clientProfileRepository;
         this.adminProfileRepository = adminProfileRepository;
         this.employeeProfileRepository = employeeProfileRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.emailService = emailService;
         this.twoFactorChallengeService = twoFactorChallengeService;
         this.totpService = totpService;
@@ -204,6 +213,7 @@ public class UserService {
             response.setAuthenticated(false);
             response.setTwoFactorRequired(true);
             response.setTempToken(tempToken);
+            response.setRefreshToken(null);
             response.setMessage("2FA required. Verify using /api/v1/auth/2fa/verify");
             return response;
         }
@@ -219,6 +229,7 @@ public class UserService {
         response.setLastLoginAt(updatedUser.getLastLoginAt());
         response.setAuthenticated(true);
         response.setTwoFactorRequired(false);
+        response.setRefreshToken(issueRefreshTokenForUser(updatedUser.getId()));
         response.setMessage("Login successful");
         return response;
     }
@@ -255,13 +266,74 @@ public class UserService {
         response.setStatus(updatedUser.getStatus());
         response.setLastLoginAt(updatedUser.getLastLoginAt());
         response.setAuthenticated(true);
+        response.setRefreshToken(issueRefreshTokenForUser(updatedUser.getId()));
         response.setMessage("2FA verification successful");
+        return response;
+    }
+
+    public RefreshResponse refresh(RefreshRequest request) {
+        if (request.getRefreshToken() == null || request.getRefreshToken().isBlank()) {
+            throw new RuntimeException("refreshToken is required");
+        }
+
+        String tokenHash = sha256Hex(request.getRefreshToken());
+        RefreshToken currentToken = refreshTokenRepository
+                .findByTokenHashAndRevokedFalseAndExpiresAtAfter(tokenHash, Instant.now())
+                .orElseThrow(() -> new RuntimeException("Invalid or expired refresh token"));
+
+        currentToken.setRevoked(true);
+        refreshTokenRepository.save(currentToken);
+
+        User user = userRepository.findById(currentToken.getUserId())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (user.getStatus() != AccountStatus.ACTIVE) {
+            throw new RuntimeException("Account is inactive");
+        }
+
+        RefreshResponse response = new RefreshResponse();
+        response.setId(user.getId());
+        response.setEmail(user.getEmail());
+        response.setRole(user.getRole());
+        response.setStatus(user.getStatus());
+        response.setLastLoginAt(user.getLastLoginAt());
+        response.setAuthenticated(true);
+        response.setRefreshToken(issueRefreshTokenForUser(user.getId()));
+        response.setMessage("Token refreshed successfully");
         return response;
     }
 
     private String generateVerificationCode() {
         int code = new Random().nextInt(900000) + 100000;
         return String.valueOf(code);
+    }
+
+    private String issueRefreshTokenForUser(UUID userId) {
+        String plainToken = UUID.randomUUID() + "." + UUID.randomUUID();
+
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setUserId(userId);
+        refreshToken.setTokenHash(sha256Hex(plainToken));
+        refreshToken.setExpiresAt(Instant.now().plus(30, ChronoUnit.DAYS));
+        refreshToken.setRevoked(false);
+        refreshToken.setCreatedAt(Instant.now());
+        refreshTokenRepository.save(refreshToken);
+
+        return plainToken;
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder();
+            for (byte b : bytes) {
+                builder.append(String.format("%02x", b));
+            }
+            return builder.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to hash token", e);
+        }
     }
 
     private boolean requiresTwoFactor(Role role) {
