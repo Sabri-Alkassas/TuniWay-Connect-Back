@@ -1,38 +1,47 @@
-package com.tuniway.connect.model.dto;
+package com.tuniway.connect.model.entity;
 
+import jakarta.persistence.*;
 import java.time.Instant;
+import java.util.UUID;
 
-public class RegisterClientRequest {
-    private String email;
-    private String password_hash;
+@Entity
+@Table(name = "client_profiles")
+public class ClientProfile {
+    @Id
+    private UUID userId;
+
+    @Column(unique = true)
     private String username;
+
+    @Column(name = "first_name")
     private String firstName;
+
+    @Column(name = "last_name")
     private String lastName;
+
     private String phone;
+
+    @Column(name = "birth_date")
     private Instant birthDate;
 
-    public RegisterClientRequest() {
+    public ClientProfile() {
     }
 
-    public RegisterClientRequest(String email, String password_hash) {
-        this.email = email;
-        this.password_hash = password_hash;
+    public ClientProfile(UUID userId, String username, String firstName, String lastName, String phone, Instant birthDate) {
+        this.userId = userId;
+        this.username = username;
+        this.firstName = firstName;
+        this.lastName = lastName;
+        this.phone = phone;
+        this.birthDate = birthDate;
     }
 
-    public String getEmail() {
-        return email;
+    public UUID getUserId() {
+        return userId;
     }
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public String getPassword_hash() {
-        return password_hash;
-    }
-
-    public void setPassword_hash(String password_hash) {
-        this.password_hash = password_hash;
+    public void setUserId(UUID userId) {
+        this.userId = userId;
     }
 
     public String getUsername() {
@@ -75,4 +84,3 @@ public class RegisterClientRequest {
         this.birthDate = birthDate;
     }
 }
-

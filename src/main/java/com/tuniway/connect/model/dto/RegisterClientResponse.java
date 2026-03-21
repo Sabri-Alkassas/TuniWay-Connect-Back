@@ -13,6 +13,11 @@ public class RegisterClientResponse {
     private AccountStatus status;
     private Instant createdAt;
     private String message;
+    private String username;
+    private String firstName;
+    private String lastName;
+    private String phone;
+    private Instant birthDate;
 
     public RegisterClientResponse() {
     }
@@ -72,5 +77,45 @@ public class RegisterClientResponse {
 
     public void setMessage(String message) {
         this.message = message;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public Instant getBirthDate() {
+        return birthDate;
+    }
+
+    public void setBirthDate(Instant birthDate) {
+        this.birthDate = birthDate;
     }
 }
