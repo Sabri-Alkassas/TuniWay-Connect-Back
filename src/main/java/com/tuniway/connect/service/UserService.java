@@ -7,9 +7,11 @@ import com.tuniway.connect.model.dto.LoginResponse;
 import com.tuniway.connect.model.dto.VerifyEmailRequest;
 import com.tuniway.connect.model.dto.VerifyEmailResponse;
 import com.tuniway.connect.model.entity.AccountStatus;
+import com.tuniway.connect.model.entity.ClientProfile;
 import com.tuniway.connect.model.entity.EmailVerificationCode;
 import com.tuniway.connect.model.entity.Role;
 import com.tuniway.connect.model.entity.User;
+import com.tuniway.connect.repository.ClientProfileRepository;
 import com.tuniway.connect.repository.EmailVerificationCodeRepository;
 import com.tuniway.connect.repository.UserRepository;
 
@@ -24,15 +26,18 @@ import java.util.UUID;
 public class UserService {
     private final UserRepository userRepository;
     private final EmailVerificationCodeRepository emailVerificationCodeRepository;
+    private final ClientProfileRepository clientProfileRepository;
     private final EmailService emailService;
 
     public UserService(
             UserRepository userRepository,
             EmailVerificationCodeRepository emailVerificationCodeRepository,
+            ClientProfileRepository clientProfileRepository,
             EmailService emailService
     ) {
         this.userRepository = userRepository;
         this.emailVerificationCodeRepository = emailVerificationCodeRepository;
+        this.clientProfileRepository = clientProfileRepository;
         this.emailService = emailService;
     }
 
@@ -49,6 +54,13 @@ public class UserService {
             throw new RuntimeException("Email already exists");
         }
 
+        // Validate username uniqueness if provided
+        if (request.getUsername() != null && !request.getUsername().isBlank()) {
+            if (clientProfileRepository.findByUsername(request.getUsername()).isPresent()) {
+                throw new RuntimeException("Username already exists");
+            }
+        }
+
         User user = new User();
         UUID uuid = UUID.randomUUID();
         user.setId(uuid);
@@ -58,6 +70,16 @@ public class UserService {
         user.setStatus(AccountStatus.INACTIVE);
 
         User savedUser = userRepository.save(user);
+
+        // Create client profile
+        ClientProfile profile = new ClientProfile();
+        profile.setUserId(savedUser.getId());
+        profile.setUsername(request.getUsername());
+        profile.setFirstName(request.getFirstName());
+        profile.setLastName(request.getLastName());
+        profile.setPhone(request.getPhone());
+        profile.setBirthDate(request.getBirthDate());
+        clientProfileRepository.save(profile);
 
         String verificationCodeValue = generateVerificationCode();
         EmailVerificationCode verificationCode = new EmailVerificationCode();
@@ -79,6 +101,11 @@ public class UserService {
         response.setRole(savedUser.getRole());
         response.setStatus(savedUser.getStatus());
         response.setCreatedAt(savedUser.getCreatedAt());
+        response.setUsername(profile.getUsername());
+        response.setFirstName(profile.getFirstName());
+        response.setLastName(profile.getLastName());
+        response.setPhone(profile.getPhone());
+        response.setBirthDate(profile.getBirthDate());
         response.setMessage("Client registered successfully. Verify your email before login.");
         return response;
     }
