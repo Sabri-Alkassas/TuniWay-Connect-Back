@@ -1,0 +1,5 @@
+*.jar
+*.war
+target/
+!**/src/main/**/target/
+!**/src/test/**/target/
