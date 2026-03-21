@@ -2,6 +2,8 @@ package com.tuniway.connect.controller;
 
 import com.tuniway.connect.model.dto.RegisterClientRequest;
 import com.tuniway.connect.model.dto.RegisterClientResponse;
+import com.tuniway.connect.model.dto.LoginRequest;
+import com.tuniway.connect.model.dto.LoginResponse;
 import com.tuniway.connect.model.dto.VerifyEmailRequest;
 import com.tuniway.connect.model.dto.VerifyEmailResponse;
 import com.tuniway.connect.service.UserService;
@@ -37,6 +39,19 @@ public class AuthController {
         } catch (RuntimeException e) {
             VerifyEmailResponse errorResponse = new VerifyEmailResponse();
             errorResponse.setVerified(false);
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
+        try {
+            LoginResponse response = userService.login(request);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            LoginResponse errorResponse = new LoginResponse();
+            errorResponse.setAuthenticated(false);
             errorResponse.setMessage(e.getMessage());
             return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
         }

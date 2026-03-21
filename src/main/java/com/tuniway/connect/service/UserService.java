@@ -2,6 +2,8 @@ package com.tuniway.connect.service;
 
 import com.tuniway.connect.model.dto.RegisterClientRequest;
 import com.tuniway.connect.model.dto.RegisterClientResponse;
+import com.tuniway.connect.model.dto.LoginRequest;
+import com.tuniway.connect.model.dto.LoginResponse;
 import com.tuniway.connect.model.dto.VerifyEmailRequest;
 import com.tuniway.connect.model.dto.VerifyEmailResponse;
 import com.tuniway.connect.model.entity.AccountStatus;
@@ -53,7 +55,7 @@ public class UserService {
         user.setEmail(request.getEmail());
         user.setPassword_hash(request.getPassword_hash());
         user.setRole(Role.CLIENT);
-        user.setStatus(AccountStatus.ACTIVE);
+        user.setStatus(AccountStatus.INACTIVE);
 
         User savedUser = userRepository.save(user);
 
@@ -77,7 +79,7 @@ public class UserService {
         response.setRole(savedUser.getRole());
         response.setStatus(savedUser.getStatus());
         response.setCreatedAt(savedUser.getCreatedAt());
-        response.setMessage("Client registered successfully. Verification code sent by email.");
+        response.setMessage("Client registered successfully. Verify your email before login.");
         return response;
     }
 
@@ -117,6 +119,40 @@ public class UserService {
         response.setEmail(user.getEmail());
         response.setVerified(true);
         response.setMessage("Email verified successfully");
+        return response;
+    }
+
+    public LoginResponse login(LoginRequest request) {
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new RuntimeException("Email is required");
+        }
+
+        if (request.getPassword_hash() == null || request.getPassword_hash().isBlank()) {
+            throw new RuntimeException("password_hash is required");
+        }
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new RuntimeException("Invalid email or password"));
+
+        if (!user.getPassword_hash().equals(request.getPassword_hash())) {
+            throw new RuntimeException("Invalid email or password");
+        }
+
+        if (user.getStatus() != AccountStatus.ACTIVE) {
+            throw new RuntimeException("Account is inactive");
+        }
+
+        user.setLastLoginAt(Instant.now());
+        User updatedUser = userRepository.save(user);
+
+        LoginResponse response = new LoginResponse();
+        response.setId(updatedUser.getId());
+        response.setEmail(updatedUser.getEmail());
+        response.setRole(updatedUser.getRole());
+        response.setStatus(updatedUser.getStatus());
+        response.setLastLoginAt(updatedUser.getLastLoginAt());
+        response.setAuthenticated(true);
+        response.setMessage("Login successful");
         return response;
     }
 

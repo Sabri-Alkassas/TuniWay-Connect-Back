@@ -88,6 +88,10 @@ public class User {
     public Instant getLastLoginAt() {
         return lastLoginAt;
     }
+    public void setLastLoginAt(Instant lastLoginAt) {
+        this.lastLoginAt = lastLoginAt;
+        update();
+    }
     private void update() {
         this.updatedAt = Instant.now();
     }
