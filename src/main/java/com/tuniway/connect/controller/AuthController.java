@@ -2,6 +2,8 @@ package com.tuniway.connect.controller;
 
 import com.tuniway.connect.model.dto.RegisterClientRequest;
 import com.tuniway.connect.model.dto.RegisterClientResponse;
+import com.tuniway.connect.model.dto.VerifyEmailRequest;
+import com.tuniway.connect.model.dto.VerifyEmailResponse;
 import com.tuniway.connect.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -22,6 +24,19 @@ public class AuthController {
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         } catch (RuntimeException e) {
             RegisterClientResponse errorResponse = new RegisterClientResponse();
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<VerifyEmailResponse> verifyEmail(@RequestBody VerifyEmailRequest request) {
+        try {
+            VerifyEmailResponse response = userService.verifyEmail(request);
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (RuntimeException e) {
+            VerifyEmailResponse errorResponse = new VerifyEmailResponse();
+            errorResponse.setVerified(false);
             errorResponse.setMessage(e.getMessage());
             return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
         }
