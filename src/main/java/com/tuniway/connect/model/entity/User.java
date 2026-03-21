@@ -58,10 +58,10 @@ public class User {
         this.email = email;
         update();
     }
-    public String getpassword_hash() {
+    public String getPassword_hash() {
         return password_hash;
     }
-    public void setpassword_hash(String password_hash) {
+    public void setPassword_hash(String password_hash) {
         this.password_hash = password_hash;
         update();
     }

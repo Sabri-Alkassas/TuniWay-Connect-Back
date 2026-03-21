@@ -21,7 +21,7 @@ public class UserService {
             throw new RuntimeException("Email is required");
         }
 
-        if (request.getpassword_hash() == null || request.getpassword_hash().isBlank()) {
+        if (request.getPassword_hash() == null || request.getPassword_hash().isBlank()) {
             throw new RuntimeException("password_hash is required");
         }
 
@@ -29,7 +29,7 @@ public class UserService {
         UUID uuid = UUID.randomUUID();
         user.setId(uuid);
         user.setEmail(request.getEmail());
-        user.setpassword_hash(request.getpassword_hash());
+        user.setPassword_hash(request.getPassword_hash());
         user.setRole(Role.CLIENT);
         user.setStatus(AccountStatus.ACTIVE);
 
