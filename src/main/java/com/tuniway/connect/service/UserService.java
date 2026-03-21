@@ -6,17 +6,24 @@ import com.tuniway.connect.model.dto.LoginRequest;
 import com.tuniway.connect.model.dto.LoginResponse;
 import com.tuniway.connect.model.dto.VerifyEmailRequest;
 import com.tuniway.connect.model.dto.VerifyEmailResponse;
+import com.tuniway.connect.model.dto.VerifyTwoFactorRequest;
+import com.tuniway.connect.model.dto.VerifyTwoFactorResponse;
 import com.tuniway.connect.model.entity.AccountStatus;
+import com.tuniway.connect.model.entity.AdminProfile;
 import com.tuniway.connect.model.entity.ClientProfile;
 import com.tuniway.connect.model.entity.EmailVerificationCode;
+import com.tuniway.connect.model.entity.EmployeeProfile;
 import com.tuniway.connect.model.entity.Role;
 import com.tuniway.connect.model.entity.User;
+import com.tuniway.connect.repository.AdminProfileRepository;
 import com.tuniway.connect.repository.ClientProfileRepository;
 import com.tuniway.connect.repository.EmailVerificationCodeRepository;
+import com.tuniway.connect.repository.EmployeeProfileRepository;
 import com.tuniway.connect.repository.UserRepository;
 
 import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Random;
@@ -27,18 +34,30 @@ public class UserService {
     private final UserRepository userRepository;
     private final EmailVerificationCodeRepository emailVerificationCodeRepository;
     private final ClientProfileRepository clientProfileRepository;
+    private final AdminProfileRepository adminProfileRepository;
+    private final EmployeeProfileRepository employeeProfileRepository;
     private final EmailService emailService;
+    private final TwoFactorChallengeService twoFactorChallengeService;
+    private final TotpService totpService;
 
     public UserService(
             UserRepository userRepository,
             EmailVerificationCodeRepository emailVerificationCodeRepository,
             ClientProfileRepository clientProfileRepository,
-            EmailService emailService
+            AdminProfileRepository adminProfileRepository,
+            EmployeeProfileRepository employeeProfileRepository,
+            EmailService emailService,
+            TwoFactorChallengeService twoFactorChallengeService,
+            TotpService totpService
     ) {
         this.userRepository = userRepository;
         this.emailVerificationCodeRepository = emailVerificationCodeRepository;
         this.clientProfileRepository = clientProfileRepository;
+        this.adminProfileRepository = adminProfileRepository;
+        this.employeeProfileRepository = employeeProfileRepository;
         this.emailService = emailService;
+        this.twoFactorChallengeService = twoFactorChallengeService;
+        this.totpService = totpService;
     }
 
     public RegisterClientResponse registerClient(RegisterClientRequest request) {
@@ -169,6 +188,26 @@ public class UserService {
             throw new RuntimeException("Account is inactive");
         }
 
+        if (requiresTwoFactor(user.getRole())) {
+            String secret = loadStaffTwoFactorSecret(user);
+            if (secret.isBlank()) {
+                throw new RuntimeException("Two-factor secret is not configured");
+            }
+
+            String tempToken = twoFactorChallengeService.createChallenge(user.getId(), Duration.ofMinutes(5));
+
+            LoginResponse response = new LoginResponse();
+            response.setId(user.getId());
+            response.setEmail(user.getEmail());
+            response.setRole(user.getRole());
+            response.setStatus(user.getStatus());
+            response.setAuthenticated(false);
+            response.setTwoFactorRequired(true);
+            response.setTempToken(tempToken);
+            response.setMessage("2FA required. Verify using /api/v1/auth/2fa/verify");
+            return response;
+        }
+
         user.setLastLoginAt(Instant.now());
         User updatedUser = userRepository.save(user);
 
@@ -179,12 +218,83 @@ public class UserService {
         response.setStatus(updatedUser.getStatus());
         response.setLastLoginAt(updatedUser.getLastLoginAt());
         response.setAuthenticated(true);
+        response.setTwoFactorRequired(false);
         response.setMessage("Login successful");
+        return response;
+    }
+
+    public VerifyTwoFactorResponse verifyTwoFactor(VerifyTwoFactorRequest request) {
+        if (request.getTempToken() == null || request.getTempToken().isBlank()) {
+            throw new RuntimeException("tempToken is required");
+        }
+
+        if (request.getTotpCode() == null || request.getTotpCode().isBlank()) {
+            throw new RuntimeException("totpCode is required");
+        }
+
+        UUID userId = twoFactorChallengeService.consumeChallenge(request.getTempToken());
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (!requiresTwoFactor(user.getRole())) {
+            throw new RuntimeException("2FA verification is only for staff accounts");
+        }
+
+        String secret = loadStaffTwoFactorSecret(user);
+        if (!totpService.isValidCode(secret, request.getTotpCode())) {
+            throw new RuntimeException("Invalid TOTP code");
+        }
+
+        user.setLastLoginAt(Instant.now());
+        User updatedUser = userRepository.save(user);
+
+        VerifyTwoFactorResponse response = new VerifyTwoFactorResponse();
+        response.setId(updatedUser.getId());
+        response.setEmail(updatedUser.getEmail());
+        response.setRole(updatedUser.getRole());
+        response.setStatus(updatedUser.getStatus());
+        response.setLastLoginAt(updatedUser.getLastLoginAt());
+        response.setAuthenticated(true);
+        response.setMessage("2FA verification successful");
         return response;
     }
 
     private String generateVerificationCode() {
         int code = new Random().nextInt(900000) + 100000;
         return String.valueOf(code);
+    }
+
+    private boolean requiresTwoFactor(Role role) {
+        return role == Role.ADMIN || role == Role.EMPLOYEE;
+    }
+
+    private String loadStaffTwoFactorSecret(User user) {
+        if (user.getRole() == Role.ADMIN) {
+            AdminProfile profile = adminProfileRepository.findById(user.getId())
+                    .orElseThrow(() -> new RuntimeException("Admin profile not found"));
+
+            if (!Boolean.TRUE.equals(profile.getTwoFactorEnabled())) {
+                throw new RuntimeException("2FA is not enabled for this admin account");
+            }
+
+            if (profile.getTwoFactorSecretEncrypted() == null || profile.getTwoFactorSecretEncrypted().isBlank()) {
+                throw new RuntimeException("Admin 2FA secret is missing");
+            }
+
+            return profile.getTwoFactorSecretEncrypted();
+        }
+
+        EmployeeProfile profile = employeeProfileRepository.findById(user.getId())
+                .orElseThrow(() -> new RuntimeException("Employee profile not found"));
+
+        if (!Boolean.TRUE.equals(profile.getTwoFactorEnabled())) {
+            throw new RuntimeException("2FA is not enabled for this employee account");
+        }
+
+        if (profile.getTwoFactorSecretEncrypted() == null || profile.getTwoFactorSecretEncrypted().isBlank()) {
+            throw new RuntimeException("Employee 2FA secret is missing");
+        }
+
+        return profile.getTwoFactorSecretEncrypted();
     }
 }

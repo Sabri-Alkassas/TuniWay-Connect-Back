@@ -6,6 +6,8 @@ import com.tuniway.connect.model.dto.LoginRequest;
 import com.tuniway.connect.model.dto.LoginResponse;
 import com.tuniway.connect.model.dto.VerifyEmailRequest;
 import com.tuniway.connect.model.dto.VerifyEmailResponse;
+import com.tuniway.connect.model.dto.VerifyTwoFactorRequest;
+import com.tuniway.connect.model.dto.VerifyTwoFactorResponse;
 import com.tuniway.connect.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -51,6 +53,19 @@ public class AuthController {
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {
             LoginResponse errorResponse = new LoginResponse();
+            errorResponse.setAuthenticated(false);
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PostMapping("/2fa/verify")
+    public ResponseEntity<VerifyTwoFactorResponse> verifyTwoFactor(@RequestBody VerifyTwoFactorRequest request) {
+        try {
+            VerifyTwoFactorResponse response = userService.verifyTwoFactor(request);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            VerifyTwoFactorResponse errorResponse = new VerifyTwoFactorResponse();
             errorResponse.setAuthenticated(false);
             errorResponse.setMessage(e.getMessage());
             return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
