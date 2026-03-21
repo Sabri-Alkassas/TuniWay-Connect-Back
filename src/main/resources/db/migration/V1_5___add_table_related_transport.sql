@@ -6,7 +6,7 @@ CREATE TABLE workshifts (
     schedule_end TIMESTAMP NOT NULL,
     status VARCHAR(50),
     actual_start TIMESTAMP,
-    actual_end TIMESTAMP
+    actual_end TIMESTAMP,
 
     CONSTRAINT fk_employee
         FOREIGN KEY (employee_id)
@@ -14,7 +14,7 @@ CREATE TABLE workshifts (
         ON DELETE CASCADE,
     CONSTRAINT fk_transport
         FOREIGN KEY (transport_id)
-        REFERENCES transports(id)
+        REFERENCES transport(id)
         ON DELETE CASCADE
 );
 
