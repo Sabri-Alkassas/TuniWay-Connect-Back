@@ -21,7 +21,7 @@ public interface ShiftStopEventRepository extends JpaRepository<ShiftStopEvent, 
     @EntityGraph(attributePaths = {"stop", "workShift"})
     Optional<ShiftStopEvent> findByWorkShiftIdAndStopId(UUID workShiftId, UUID stopId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         value = """
             UPDATE shift_stop_events
@@ -40,7 +40,7 @@ public interface ShiftStopEventRepository extends JpaRepository<ShiftStopEvent, 
         @Param("now") Instant now
     );
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         value = """
             UPDATE shift_stop_events
@@ -59,7 +59,7 @@ public interface ShiftStopEventRepository extends JpaRepository<ShiftStopEvent, 
         @Param("now") Instant now
     );
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         value = """
             UPDATE shift_stop_events

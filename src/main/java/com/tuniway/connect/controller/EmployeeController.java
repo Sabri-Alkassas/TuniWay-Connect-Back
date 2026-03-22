@@ -1,12 +1,12 @@
 package com.tuniway.connect.controller;
 
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
-import com.tuniway.connect.model.dto.ShiftStartRequest;
-import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
 import com.tuniway.connect.model.dto.ShiftEndRequest;
 import com.tuniway.connect.model.dto.ShiftEndResponse;
+import com.tuniway.connect.model.dto.ShiftStartRequest;
+import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.repository.UserRepository;
 import com.tuniway.connect.service.EmployeeService;
@@ -14,12 +14,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.security.Principal;
 import java.util.UUID;
-
-
 
 @RestController
 @RequestMapping("/api/v1/employee")
@@ -36,7 +39,6 @@ public class EmployeeController {
     public ResponseEntity<EmployeeScheduleResponse> getSchedule(Principal principal) {
         try {
             User user = requireAuthenticatedUser(principal);
-            
             EmployeeScheduleResponse response = employeeService.getSchedule(user.getId());
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {
@@ -48,15 +50,18 @@ public class EmployeeController {
 
     @PreAuthorize("hasRole('EMPLOYEE')")
     @PostMapping("/shifts/{id}/start")
-    public ResponseEntity<ShiftStartResponse> postShiftStartTime(@RequestBody ShiftStartRequest request, @PathVariable("id") UUID shiftId, Principal principal) {
+    public ResponseEntity<ShiftStartResponse> postShiftStartTime(@RequestBody(required = false) ShiftStartRequest request,
+                                                                 @PathVariable("id") UUID shiftId,
+                                                                 Principal principal) {
         try {
             User user = requireAuthenticatedUser(principal);
             return new ResponseEntity<>(employeeService.startShift(request, shiftId, user), HttpStatus.OK);
         } catch (RuntimeException e) {
-            return new ResponseEntity<>(new ShiftStartResponse() {{
-                setSuccess(false);
-                setMessage(e.getMessage());
-            }}, HttpStatus.BAD_REQUEST);
+            ShiftStartResponse errorResponse = new ShiftStartResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            errorResponse.setShiftId(shiftId);
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
         }
     }
 
@@ -76,9 +81,8 @@ public class EmployeeController {
   
     @PreAuthorize("hasRole('EMPLOYEE')")
     @GetMapping("/shifts/{id}/stops")
-    public ResponseEntity<EmployeeShiftStopsResponse> getShiftStops(
-            @PathVariable("id") UUID shiftId,
-            Principal principal) {
+    public ResponseEntity<EmployeeShiftStopsResponse> getShiftStops(@PathVariable("id") UUID shiftId,
+                                                                     Principal principal) {
         try {
             User user = requireAuthenticatedUser(principal);
             EmployeeShiftStopsResponse response = employeeService.getShiftStops(user.getId(), shiftId);
@@ -93,10 +97,9 @@ public class EmployeeController {
 
     @PreAuthorize("hasRole('EMPLOYEE')")
     @PostMapping("/shifts/{id}/stops/{stopId}/arrive")
-    public ResponseEntity<EmployeeStopActionResponse> arriveStop(
-            @PathVariable("id") UUID shiftId,
-            @PathVariable UUID stopId,
-            Principal principal) {
+    public ResponseEntity<EmployeeStopActionResponse> arriveStop(@PathVariable("id") UUID shiftId,
+                                                                 @PathVariable UUID stopId,
+                                                                 Principal principal) {
         try {
             User user = requireAuthenticatedUser(principal);
             EmployeeStopActionResponse response = employeeService.arriveAtStop(user.getId(), shiftId, stopId);
@@ -112,10 +115,9 @@ public class EmployeeController {
 
     @PreAuthorize("hasRole('EMPLOYEE')")
     @PostMapping("/shifts/{id}/stops/{stopId}/depart")
-    public ResponseEntity<EmployeeStopActionResponse> departStop(
-            @PathVariable("id") UUID shiftId,
-            @PathVariable UUID stopId,
-            Principal principal) {
+    public ResponseEntity<EmployeeStopActionResponse> departStop(@PathVariable("id") UUID shiftId,
+                                                                 @PathVariable UUID stopId,
+                                                                 Principal principal) {
         try {
             User user = requireAuthenticatedUser(principal);
             EmployeeStopActionResponse response = employeeService.departFromStop(user.getId(), shiftId, stopId);

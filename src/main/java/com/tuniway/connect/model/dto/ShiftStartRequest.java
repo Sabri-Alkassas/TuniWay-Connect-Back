@@ -1,21 +1,22 @@
 package com.tuniway.connect.model.dto;
 
+import java.util.UUID;
 
 public class ShiftStartRequest {
-    private Long shiftId;
+    private UUID shiftId;
 
     public ShiftStartRequest() {
     }
 
-    public ShiftStartRequest(Long shiftId) {
+    public ShiftStartRequest(UUID shiftId) {
         this.shiftId = shiftId;
     }
 
-    public Long getShiftId() {
+    public UUID getShiftId() {
         return shiftId;
     }
 
-    public void setShiftId(Long shiftId) {
+    public void setShiftId(UUID shiftId) {
         this.shiftId = shiftId;
     }
 }
