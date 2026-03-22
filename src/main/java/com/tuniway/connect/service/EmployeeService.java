@@ -1,10 +1,10 @@
 package com.tuniway.connect.service;
 
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
-import com.tuniway.connect.model.dto.ShiftStartRequest;
-import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
+import com.tuniway.connect.model.dto.ShiftStartRequest;
+import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.entity.ShiftStopEvent;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.model.entity.WorkShift;
@@ -37,46 +37,54 @@ public class EmployeeService {
 
     public EmployeeScheduleResponse getSchedule(UUID employeeId) {
         List<WorkShift> shifts = workShiftRepository.findByEmployeeIdOrderByScheduleStartAsc(employeeId);
-        
+
         List<EmployeeScheduleResponse.ShiftDto> shiftDtos = shifts.stream()
-            .map(shift -> new EmployeeScheduleResponse.ShiftDto(
-                shift.getId().toString(),
-                shift.getTransport().getId().toString(),
-                shift.getTransport().getName(),
-                shift.getTransport().getType(),
-                shift.getTransport().getZone(),
-                shift.getScheduleStart(),
-                shift.getScheduleEnd(),
-                shift.getStatus(),
-                shift.getActualStart(),
-                shift.getActualEnd()
-            ))
-            .collect(Collectors.toList());
-        
+                .map(shift -> new EmployeeScheduleResponse.ShiftDto(
+                        shift.getId().toString(),
+                        shift.getTransport().getId().toString(),
+                        shift.getTransport().getName(),
+                        shift.getTransport().getType(),
+                        shift.getTransport().getZone(),
+                        shift.getScheduleStart(),
+                        shift.getScheduleEnd(),
+                        shift.getStatus(),
+                        shift.getActualStart(),
+                        shift.getActualEnd()
+                ))
+                .collect(Collectors.toList());
+
         EmployeeScheduleResponse response = new EmployeeScheduleResponse();
         response.setMessage("Schedule retrieved successfully");
         response.setShifts(shiftDtos);
         return response;
     }
-  
-    public ShiftStartResponse startShift(ShiftStartRequest request, UUID shiftId, User user) {
-        WorkShift shift = workShiftRepository.findById(shiftId)
-            .orElseThrow(() -> new RuntimeException("Work shift not found"));
 
-        if (!shift.getEmployeeId().equals(user.getId())) {
-            throw new RuntimeException("You are not assigned to this shift");
+    @Transactional
+    public ShiftStartResponse startShift(ShiftStartRequest request, UUID shiftId, User user) {
+        if (request != null && request.getShiftId() != null && !request.getShiftId().equals(shiftId)) {
+            throw new RuntimeException("Shift id in body does not match URL path");
         }
 
-        shift.setActualStart(java.time.Instant.now());
-        shift.setStatus("IN_PROGRESS");
-        workShiftRepository.save(shift);
+        WorkShift shift = requireOwnedShift(user.getId(), shiftId);
+        String status = normalizeShiftStatus(shift.getStatus());
 
-        ShiftStartResponse response = new ShiftStartResponse();
-        response.setSuccess(true);
-        response.setMessage("Shift started at " + shift.getActualStart() + " successfully");
-        response.setShift(shift);
+        if ("IN_PROGRESS".equals(status)) {
+            return buildShiftStartResponse(shift, true, "Shift already started");
+        }
+
+        if (!"SCHEDULED".equals(status)) {
+            throw new RuntimeException("Shift cannot be started from status: " + status);
+        }
+
+        if (shift.getActualStart() == null) {
+            shift.setActualStart(Instant.now());
+        }
+        shift.setStatus("IN_PROGRESS");
+        WorkShift saved = workShiftRepository.save(shift);
+
+        return buildShiftStartResponse(saved, true, "Shift started successfully");
     }
-  
+
     public EmployeeShiftStopsResponse getShiftStops(UUID employeeId, UUID shiftId) {
         WorkShift shift = requireOwnedShift(employeeId, shiftId);
         List<ShiftStopEvent> events = shiftStopEventRepository.findByWorkShiftIdOrderByStopOrderAsc(shift.getId());
@@ -185,6 +193,10 @@ public class EmployeeService {
         return status == null ? "pending" : status.trim().toLowerCase();
     }
 
+    private String normalizeShiftStatus(String status) {
+        return status == null ? "SCHEDULED" : status.trim().toUpperCase();
+    }
+
     private void validateKnownStatus(String status) {
         if (!ALLOWED_STATUSES.contains(status)) {
             throw new RuntimeException("Unsupported stop status: " + status);
@@ -211,7 +223,16 @@ public class EmployeeService {
         response.setStatus(event.getStatus());
         response.setArrivedAt(event.getArrivedAt());
         response.setDepartedAt(event.getDepartedAt());
+        return response;
+    }
 
+    private ShiftStartResponse buildShiftStartResponse(WorkShift shift, boolean success, String message) {
+        ShiftStartResponse response = new ShiftStartResponse();
+        response.setSuccess(success);
+        response.setMessage(message);
+        response.setShiftId(shift.getId());
+        response.setStatus(shift.getStatus());
+        response.setActualStart(shift.getActualStart());
         return response;
     }
 }
