@@ -28,7 +28,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/v1/client/**").permitAll()
-                .requestMatchers("/api/v1/employee/**").permitAll()
+                .requestMatchers("/api/v1/employee/**").authenticated()
                 .requestMatchers("/api/v1/admin/**").permitAll()
                 .anyRequest().authenticated()
             )
