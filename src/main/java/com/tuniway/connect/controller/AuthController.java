@@ -10,6 +10,8 @@ import com.tuniway.connect.model.dto.VerifyTwoFactorRequest;
 import com.tuniway.connect.model.dto.VerifyTwoFactorResponse;
 import com.tuniway.connect.model.dto.RefreshRequest;
 import com.tuniway.connect.model.dto.RefreshResponse;
+import com.tuniway.connect.model.dto.LogoutRequest;
+import com.tuniway.connect.model.dto.LogoutResponse;
 import com.tuniway.connect.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -85,5 +87,11 @@ public class AuthController {
             errorResponse.setMessage(e.getMessage());
             return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
         }
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<LogoutResponse> logout(@RequestBody(required = false) LogoutRequest request) {
+        LogoutResponse response = userService.logout(request);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }

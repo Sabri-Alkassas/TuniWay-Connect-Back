@@ -10,6 +10,8 @@ import com.tuniway.connect.model.dto.VerifyTwoFactorRequest;
 import com.tuniway.connect.model.dto.VerifyTwoFactorResponse;
 import com.tuniway.connect.model.dto.RefreshRequest;
 import com.tuniway.connect.model.dto.RefreshResponse;
+import com.tuniway.connect.model.dto.LogoutRequest;
+import com.tuniway.connect.model.dto.LogoutResponse;
 import com.tuniway.connect.model.entity.AccountStatus;
 import com.tuniway.connect.model.entity.AdminProfile;
 import com.tuniway.connect.model.entity.ClientProfile;
@@ -304,6 +306,19 @@ public class UserService {
         response.setAuthenticated(true);
         response.setRefreshToken(issueRefreshTokenForUser(user.getId()));
         response.setMessage("Token refreshed successfully");
+        return response;
+    }
+
+    @Transactional
+    public LogoutResponse logout(LogoutRequest request) {
+        if (request != null && request.getRefreshToken() != null && !request.getRefreshToken().isBlank()) {
+            String tokenHash = sha256Hex(request.getRefreshToken());
+            refreshTokenRepository.revokeIfNotRevoked(tokenHash);
+        }
+
+        LogoutResponse response = new LogoutResponse();
+        response.setSuccess(true);
+        response.setMessage("Logout processed");
         return response;
     }
 
