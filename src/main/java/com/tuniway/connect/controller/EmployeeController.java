@@ -3,6 +3,8 @@ package com.tuniway.connect.controller;
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
 import com.tuniway.connect.model.dto.ShiftStartRequest;
 import com.tuniway.connect.model.dto.ShiftStartResponse;
+import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
+import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.repository.UserRepository;
 import com.tuniway.connect.service.EmployeeService;
@@ -13,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
+import java.util.UUID;
 
 
 
@@ -26,12 +29,11 @@ public class EmployeeController {
     @Autowired
     private UserRepository userRepository;
 
+    @PreAuthorize("hasRole('EMPLOYEE')")
     @GetMapping("/schedule")
     public ResponseEntity<EmployeeScheduleResponse> getSchedule(Principal principal) {
         try {
-            String email = principal.getName();
-            User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+            User user = requireAuthenticatedUser(principal);
             
             EmployeeScheduleResponse response = employeeService.getSchedule(user.getId());
             return new ResponseEntity<>(response, HttpStatus.OK);
@@ -44,15 +46,70 @@ public class EmployeeController {
 
     @PreAuthorize("hasRole('EMPLOYEE')")
     @PostMapping("/shifts/{id}/start")
-    public ResponseEntity<ShiftStartResponse> postShiftStartTime(@RequestBody ShiftStartRequest request, @PathVariable java.util.UUID id, Principal principal) {
+    public ResponseEntity<ShiftStartResponse> postShiftStartTime(@RequestBody ShiftStartRequest request, @PathVariable("id") UUID shiftId, Principal principal) {
         try {
             User user = requireAuthenticatedUser(principal);
-            return new ResponseEntity<>(employeeService.startShift(request, id, user), HttpStatus.OK);
-        } catch (RuntimeException e) {
+            return new ResponseEntity<>(employeeService.startShift(request, shiftId, user), HttpStatus.OK);
+        } catch (RuntimeException e)
             return new ResponseEntity<>(new ShiftStartResponse() {{
                 setSuccess(false);
                 setMessage(e.getMessage());
             }}, HttpStatus.BAD_REQUEST);
+        }
+    }
+  
+    @PREAuthorize("hasRole('EMPLOYEE')")
+    @GetMapping("/shifts/{id}/stops")
+    public ResponseEntity<EmployeeShiftStopsResponse> getShiftStops(
+            @PathVariable("id") UUID shiftId,
+            Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            EmployeeShiftStopsResponse response = employeeService.getShiftStops(user.getId(), shiftId);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            EmployeeShiftStopsResponse errorResponse = new EmployeeShiftStopsResponse();
+            errorResponse.setMessage(e.getMessage());
+            errorResponse.setShiftId(shiftId.toString());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PreAuthorize("hasRole('EMPLOYEE')")
+    @PostMapping("/shifts/{id}/stops/{stopId}/arrive")
+    public ResponseEntity<EmployeeStopActionResponse> arriveStop(
+            @PathVariable("id") UUID shiftId,
+            @PathVariable UUID stopId,
+            Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            EmployeeStopActionResponse response = employeeService.arriveAtStop(user.getId(), shiftId, stopId);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            EmployeeStopActionResponse errorResponse = new EmployeeStopActionResponse();
+            errorResponse.setMessage(e.getMessage());
+            errorResponse.setShiftId(shiftId.toString());
+            errorResponse.setStopId(stopId.toString());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PreAuthorize("hasRole('EMPLOYEE')")
+    @PostMapping("/shifts/{id}/stops/{stopId}/depart")
+    public ResponseEntity<EmployeeStopActionResponse> departStop(
+            @PathVariable("id") UUID shiftId,
+            @PathVariable UUID stopId,
+            Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            EmployeeStopActionResponse response = employeeService.departFromStop(user.getId(), shiftId, stopId);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            EmployeeStopActionResponse errorResponse = new EmployeeStopActionResponse();
+            errorResponse.setMessage(e.getMessage());
+            errorResponse.setShiftId(shiftId.toString());
+            errorResponse.setStopId(stopId.toString());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
         }
     }
 
