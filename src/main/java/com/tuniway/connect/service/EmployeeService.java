@@ -12,12 +12,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 public class EmployeeService {
+
+    private static final Set<String> ALLOWED_STATUSES = new HashSet<>(
+            Arrays.asList("pending", "arrived", "departed", "skipped")
+    );
 
     @Autowired
     private WorkShiftRepository workShiftRepository;
@@ -68,21 +75,37 @@ public class EmployeeService {
     public EmployeeStopActionResponse arriveAtStop(UUID employeeId, UUID shiftId, UUID stopId) {
         requireOwnedShift(employeeId, shiftId);
         ShiftStopEvent event = requireShiftStopEvent(shiftId, stopId);
-
         String status = normalizeStatus(event.getStatus());
+        validateKnownStatus(status);
+
         if ("departed".equals(status)) {
             throw new RuntimeException("Stop already departed. Arrival is no longer allowed.");
         }
-
+        if ("skipped".equals(status)) {
+            throw new RuntimeException("Stop is skipped. Arrival is not allowed.");
+        }
         if ("arrived".equals(status)) {
             return toStopActionResponse(event, "Arrival already recorded");
         }
 
         Instant now = Instant.now();
-        event.setArrivedAt(now);
-        event.setStatus("arrived");
-        event.setUpdatedAt(now);
-        ShiftStopEvent updated = shiftStopEventRepository.save(event);
+        int updatedRows = shiftStopEventRepository.markArrivedIfPending(shiftId, stopId, now);
+        if (updatedRows == 0) {
+            ShiftStopEvent latest = requireShiftStopEvent(shiftId, stopId);
+            String latestStatus = normalizeStatus(latest.getStatus());
+            if ("arrived".equals(latestStatus)) {
+                return toStopActionResponse(latest, "Arrival already recorded");
+            }
+            if ("departed".equals(latestStatus)) {
+                throw new RuntimeException("Stop already departed. Arrival is no longer allowed.");
+            }
+            if ("skipped".equals(latestStatus)) {
+                throw new RuntimeException("Stop is skipped. Arrival is not allowed.");
+            }
+            throw new RuntimeException("Arrival transition failed due to concurrent update. Retry request.");
+        }
+
+        ShiftStopEvent updated = requireShiftStopEvent(shiftId, stopId);
 
         return toStopActionResponse(updated, "Arrival recorded successfully");
     }
@@ -93,18 +116,36 @@ public class EmployeeService {
         ShiftStopEvent event = requireShiftStopEvent(shiftId, stopId);
 
         String status = normalizeStatus(event.getStatus());
+        validateKnownStatus(status);
+
         if ("departed".equals(status)) {
             return toStopActionResponse(event, "Departure already recorded");
         }
+        if ("skipped".equals(status)) {
+            throw new RuntimeException("Stop is skipped. Departure is not allowed.");
+        }
 
         Instant now = Instant.now();
-        if (!"arrived".equals(status)) {
-            event.setArrivedAt(now);
+        int updatedRows;
+        if ("arrived".equals(status)) {
+            updatedRows = shiftStopEventRepository.markDepartedIfArrived(shiftId, stopId, now);
+        } else {
+            updatedRows = shiftStopEventRepository.markDepartedDirectlyIfPending(shiftId, stopId, now);
         }
-        event.setDepartedAt(now);
-        event.setStatus("departed");
-        event.setUpdatedAt(now);
-        ShiftStopEvent updated = shiftStopEventRepository.save(event);
+
+        if (updatedRows == 0) {
+            ShiftStopEvent latest = requireShiftStopEvent(shiftId, stopId);
+            String latestStatus = normalizeStatus(latest.getStatus());
+            if ("departed".equals(latestStatus)) {
+                return toStopActionResponse(latest, "Departure already recorded");
+            }
+            if ("skipped".equals(latestStatus)) {
+                throw new RuntimeException("Stop is skipped. Departure is not allowed.");
+            }
+            throw new RuntimeException("Departure transition failed due to concurrent update. Retry request.");
+        }
+
+        ShiftStopEvent updated = requireShiftStopEvent(shiftId, stopId);
 
         return toStopActionResponse(updated, "Departure recorded successfully");
     }
@@ -121,6 +162,12 @@ public class EmployeeService {
 
     private String normalizeStatus(String status) {
         return status == null ? "pending" : status.trim().toLowerCase();
+    }
+
+    private void validateKnownStatus(String status) {
+        if (!ALLOWED_STATUSES.contains(status)) {
+            throw new RuntimeException("Unsupported stop status: " + status);
+        }
     }
 
     private EmployeeShiftStopsResponse.ShiftStopDto toShiftStopDto(ShiftStopEvent event) {
