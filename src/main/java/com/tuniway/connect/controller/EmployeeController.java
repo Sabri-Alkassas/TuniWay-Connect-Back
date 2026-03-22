@@ -5,6 +5,8 @@ import com.tuniway.connect.model.dto.ShiftStartRequest;
 import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
+import com.tuniway.connect.model.dto.ShiftEndRequest;
+import com.tuniway.connect.model.dto.ShiftEndResponse;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.repository.UserRepository;
 import com.tuniway.connect.service.EmployeeService;
@@ -50,15 +52,29 @@ public class EmployeeController {
         try {
             User user = requireAuthenticatedUser(principal);
             return new ResponseEntity<>(employeeService.startShift(request, shiftId, user), HttpStatus.OK);
-        } catch (RuntimeException e)
+        } catch (RuntimeException e) {
             return new ResponseEntity<>(new ShiftStartResponse() {{
                 setSuccess(false);
                 setMessage(e.getMessage());
             }}, HttpStatus.BAD_REQUEST);
         }
     }
+
+    @PreAuthorize("hasRole('EMPLOYEE')")
+    @PostMapping("/shifts/{id}/end")
+    public ResponseEntity<ShiftEndResponse> postShiftEndTime(@PathVariable("id") UUID shiftId, Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            return new ResponseEntity<>(employeeService.endShift(shiftId, user), HttpStatus.OK);
+        } catch (RuntimeException e) {
+            return new ResponseEntity<>(new ShiftEndResponse() {{
+                setSuccess(false);
+                setMessage(e.getMessage());
+            }}, HttpStatus.BAD_REQUEST);
+        }
+    }   
   
-    @PREAuthorize("hasRole('EMPLOYEE')")
+    @PreAuthorize("hasRole('EMPLOYEE')")
     @GetMapping("/shifts/{id}/stops")
     public ResponseEntity<EmployeeShiftStopsResponse> getShiftStops(
             @PathVariable("id") UUID shiftId,

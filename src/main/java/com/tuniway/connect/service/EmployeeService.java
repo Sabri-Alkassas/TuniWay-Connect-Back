@@ -3,6 +3,7 @@ package com.tuniway.connect.service;
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
 import com.tuniway.connect.model.dto.ShiftStartRequest;
 import com.tuniway.connect.model.dto.ShiftStartResponse;
+import com.tuniway.connect.model.dto.ShiftEndResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
 import com.tuniway.connect.model.entity.ShiftStopEvent;
@@ -75,6 +76,30 @@ public class EmployeeService {
         response.setSuccess(true);
         response.setMessage("Shift started at " + shift.getActualStart() + " successfully");
         response.setShift(shift);
+        return response;
+    }
+
+    public ShiftEndResponse endShift(UUID shiftId, User user) {
+        WorkShift shift = workShiftRepository.findById(shiftId)
+            .orElseThrow(() -> new RuntimeException("Work shift not found"));
+
+        if (!shift.getEmployeeId().equals(user.getId())) {
+            throw new RuntimeException("You are not assigned to this shift");
+        }
+
+        if (shift.getActualStart() == null) {
+            throw new RuntimeException("Cannot end a shift that has not been started");
+        }
+
+        shift.setActualEnd(java.time.Instant.now());
+        shift.setStatus("COMPLETED");
+        workShiftRepository.save(shift);
+
+        ShiftEndResponse response = new ShiftEndResponse();
+        response.setSuccess(true);
+        response.setMessage("Shift ended at " + shift.getActualEnd() + " successfully");
+        response.setShift(shift);
+        return response;
     }
   
     public EmployeeShiftStopsResponse getShiftStops(UUID employeeId, UUID shiftId) {
