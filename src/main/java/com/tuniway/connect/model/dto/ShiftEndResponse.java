@@ -1,18 +1,37 @@
 package com.tuniway.connect.model.dto;
 
-import com.tuniway.connect.model.entity.WorkShift;
+import java.time.Instant;
+import java.util.UUID;
 
 public class ShiftEndResponse {
     private boolean success;
     private String message;
-    private WorkShift shift;
+    private UUID shiftId;
+    private String status;
+    private Instant actualEnd;
 
-    public WorkShift getShift() {
-        return shift;
+    public UUID getShiftId() {
+        return shiftId;
     }
 
-    public void setShift(WorkShift shift) {
-        this.shift = shift;
+    public void setShiftId(UUID shiftId) {
+        this.shiftId = shiftId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Instant getActualEnd() {
+        return actualEnd;
+    }
+
+    public void setActualEnd(Instant actualEnd) {
+        this.actualEnd = actualEnd;
     }
 
     public boolean getSuccess() {
