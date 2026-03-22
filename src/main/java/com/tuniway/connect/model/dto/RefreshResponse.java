@@ -6,29 +6,17 @@ import com.tuniway.connect.model.entity.Role;
 import java.time.Instant;
 import java.util.UUID;
 
-public class LoginResponse {
+public class RefreshResponse {
     private UUID id;
     private String email;
     private Role role;
     private AccountStatus status;
     private Instant lastLoginAt;
     private boolean authenticated;
-    private boolean twoFactorRequired;
-    private String tempToken;
     private String refreshToken;
     private String message;
 
-    public LoginResponse() {
-    }
-
-    public LoginResponse(UUID id, String email, Role role, AccountStatus status, Instant lastLoginAt, boolean authenticated, String message) {
-        this.id = id;
-        this.email = email;
-        this.role = role;
-        this.status = status;
-        this.lastLoginAt = lastLoginAt;
-        this.authenticated = authenticated;
-        this.message = message;
+    public RefreshResponse() {
     }
 
     public UUID getId() {
@@ -77,22 +65,6 @@ public class LoginResponse {
 
     public void setAuthenticated(boolean authenticated) {
         this.authenticated = authenticated;
-    }
-
-    public boolean isTwoFactorRequired() {
-        return twoFactorRequired;
-    }
-
-    public void setTwoFactorRequired(boolean twoFactorRequired) {
-        this.twoFactorRequired = twoFactorRequired;
-    }
-
-    public String getTempToken() {
-        return tempToken;
-    }
-
-    public void setTempToken(String tempToken) {
-        this.tempToken = tempToken;
     }
 
     public String getRefreshToken() {
