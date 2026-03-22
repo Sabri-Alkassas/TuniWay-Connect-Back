@@ -1,11 +1,14 @@
 package com.tuniway.connect.model.dto;
 
-import com.tuniway.connect.model.entity.WorkShift;
+import java.time.Instant;
+import java.util.UUID;
 
 public class ShiftStartResponse {
     private boolean success;
     private String message;
-    private WorkShift shift;
+    private UUID shiftId;
+    private String status;
+    private Instant actualStart;
 
     public boolean getSuccess() {
         return success;
@@ -23,11 +26,27 @@ public class ShiftStartResponse {
         this.message = message;
     }
 
-    public WorkShift getShift() {
-        return shift;
+    public UUID getShiftId() {
+        return shiftId;
     }
 
-    public void setShift(WorkShift shift) {
-        this.shift = shift;
+    public void setShiftId(UUID shiftId) {
+        this.shiftId = shiftId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Instant getActualStart() {
+        return actualStart;
+    }
+
+    public void setActualStart(Instant actualStart) {
+        this.actualStart = actualStart;
     }
 }
