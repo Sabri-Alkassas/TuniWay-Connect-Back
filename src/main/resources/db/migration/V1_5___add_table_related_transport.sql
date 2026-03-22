@@ -4,7 +4,7 @@ CREATE TABLE workshifts (
     transport_id UUID NOT NULL,
     schedule_start TIMESTAMP NOT NULL,
     schedule_end TIMESTAMP NOT NULL,
-    status VARCHAR(50),
+    status VARCHAR(50), -- "scheduled", "in_progress", "completed", "cancelled"
     actual_start TIMESTAMP,
     actual_end TIMESTAMP,
 

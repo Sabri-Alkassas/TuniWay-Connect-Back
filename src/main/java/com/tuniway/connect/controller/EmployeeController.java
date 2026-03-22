@@ -1,6 +1,8 @@
 package com.tuniway.connect.controller;
 
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
+import com.tuniway.connect.model.dto.ShiftStartRequest;
+import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
 import com.tuniway.connect.model.entity.User;
@@ -14,6 +16,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.UUID;
+
+
 
 @RestController
 @RequestMapping("/api/v1/employee")
@@ -41,6 +45,20 @@ public class EmployeeController {
     }
 
     @PreAuthorize("hasRole('EMPLOYEE')")
+    @PostMapping("/shifts/{id}/start")
+    public ResponseEntity<ShiftStartResponse> postShiftStartTime(@RequestBody ShiftStartRequest request, @PathVariable("id") UUID shiftId, Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            return new ResponseEntity<>(employeeService.startShift(request, shiftId, user), HttpStatus.OK);
+        } catch (RuntimeException e)
+            return new ResponseEntity<>(new ShiftStartResponse() {{
+                setSuccess(false);
+                setMessage(e.getMessage());
+            }}, HttpStatus.BAD_REQUEST);
+        }
+    }
+  
+    @PREAuthorize("hasRole('EMPLOYEE')")
     @GetMapping("/shifts/{id}/stops")
     public ResponseEntity<EmployeeShiftStopsResponse> getShiftStops(
             @PathVariable("id") UUID shiftId,

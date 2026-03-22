@@ -1,9 +1,12 @@
 package com.tuniway.connect.service;
 
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
+import com.tuniway.connect.model.dto.ShiftStartRequest;
+import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
 import com.tuniway.connect.model.entity.ShiftStopEvent;
+import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.model.entity.WorkShift;
 import com.tuniway.connect.repository.ShiftStopEventRepository;
 import com.tuniway.connect.repository.WorkShiftRepository;
@@ -55,7 +58,25 @@ public class EmployeeService {
         response.setShifts(shiftDtos);
         return response;
     }
+  
+    public ShiftStartResponse startShift(ShiftStartRequest request, UUID shiftId, User user) {
+        WorkShift shift = workShiftRepository.findById(shiftId)
+            .orElseThrow(() -> new RuntimeException("Work shift not found"));
 
+        if (!shift.getEmployeeId().equals(user.getId())) {
+            throw new RuntimeException("You are not assigned to this shift");
+        }
+
+        shift.setActualStart(java.time.Instant.now());
+        shift.setStatus("IN_PROGRESS");
+        workShiftRepository.save(shift);
+
+        ShiftStartResponse response = new ShiftStartResponse();
+        response.setSuccess(true);
+        response.setMessage("Shift started at " + shift.getActualStart() + " successfully");
+        response.setShift(shift);
+    }
+  
     public EmployeeShiftStopsResponse getShiftStops(UUID employeeId, UUID shiftId) {
         WorkShift shift = requireOwnedShift(employeeId, shiftId);
         List<ShiftStopEvent> events = shiftStopEventRepository.findByWorkShiftIdOrderByStopOrderAsc(shift.getId());
@@ -190,6 +211,7 @@ public class EmployeeService {
         response.setStatus(event.getStatus());
         response.setArrivedAt(event.getArrivedAt());
         response.setDepartedAt(event.getDepartedAt());
+
         return response;
     }
 }
