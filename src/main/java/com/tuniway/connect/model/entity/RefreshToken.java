@@ -25,7 +25,7 @@ public class RefreshToken {
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
-    @Column(name = "rovoked")
+    @Column(name = "revoked")
     private Boolean revoked;
 
     @Column(name = "created_at", nullable = false)

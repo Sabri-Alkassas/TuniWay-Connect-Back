@@ -25,6 +25,7 @@ import com.tuniway.connect.repository.EmployeeProfileRepository;
 import com.tuniway.connect.repository.RefreshTokenRepository;
 import com.tuniway.connect.repository.UserRepository;
 
+import jakarta.transaction.Transactional;
 import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
@@ -53,7 +54,7 @@ public class UserService {
             ClientProfileRepository clientProfileRepository,
             AdminProfileRepository adminProfileRepository,
             EmployeeProfileRepository employeeProfileRepository,
-                RefreshTokenRepository refreshTokenRepository,
+            RefreshTokenRepository refreshTokenRepository,
             EmailService emailService,
             TwoFactorChallengeService twoFactorChallengeService,
             TotpService totpService
@@ -271,18 +272,21 @@ public class UserService {
         return response;
     }
 
+    @Transactional
     public RefreshResponse refresh(RefreshRequest request) {
         if (request.getRefreshToken() == null || request.getRefreshToken().isBlank()) {
             throw new RuntimeException("refreshToken is required");
         }
 
         String tokenHash = sha256Hex(request.getRefreshToken());
-        RefreshToken currentToken = refreshTokenRepository
-                .findByTokenHashAndRevokedFalseAndExpiresAtAfter(tokenHash, Instant.now())
-                .orElseThrow(() -> new RuntimeException("Invalid or expired refresh token"));
+        Instant now = Instant.now();
+        int updatedRows = refreshTokenRepository.revokeIfActive(tokenHash, now);
+        if (updatedRows == 0) {
+            throw new RuntimeException("Invalid or expired refresh token");
+        }
 
-        currentToken.setRevoked(true);
-        refreshTokenRepository.save(currentToken);
+        RefreshToken currentToken = refreshTokenRepository.findByTokenHash(tokenHash)
+                .orElseThrow(() -> new RuntimeException("Refresh token record not found"));
 
         User user = userRepository.findById(currentToken.getUserId())
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -311,12 +315,16 @@ public class UserService {
     private String issueRefreshTokenForUser(UUID userId) {
         String plainToken = UUID.randomUUID() + "." + UUID.randomUUID();
 
+        Instant now = Instant.now();
+        refreshTokenRepository.deleteByRevokedTrueOrExpiresAtBefore(now);
+        refreshTokenRepository.deleteByUserId(userId);
+
         RefreshToken refreshToken = new RefreshToken();
         refreshToken.setUserId(userId);
         refreshToken.setTokenHash(sha256Hex(plainToken));
-        refreshToken.setExpiresAt(Instant.now().plus(30, ChronoUnit.DAYS));
+        refreshToken.setExpiresAt(now.plus(30, ChronoUnit.DAYS));
         refreshToken.setRevoked(false);
-        refreshToken.setCreatedAt(Instant.now());
+        refreshToken.setCreatedAt(now);
         refreshTokenRepository.save(refreshToken);
 
         return plainToken;
