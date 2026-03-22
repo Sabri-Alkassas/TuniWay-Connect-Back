@@ -107,7 +107,9 @@ public class EmployeeService {
         ShiftEndResponse response = new ShiftEndResponse();
         response.setSuccess(true);
         response.setMessage("Shift ended at " + shift.getActualEnd() + " successfully");
-        response.setShift(shift);
+        response.setShiftId(shift.getId());
+        response.setStatus(shift.getStatus());
+        response.setActualEnd(shift.getActualEnd());
         return response;
     }
 
