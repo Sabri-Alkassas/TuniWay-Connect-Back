@@ -49,6 +49,7 @@ public class UserService {
     private final EmailService emailService;
     private final TwoFactorChallengeService twoFactorChallengeService;
     private final TotpService totpService;
+    private final JwtService jwtService;
 
     public UserService(
             UserRepository userRepository,
@@ -59,7 +60,8 @@ public class UserService {
             RefreshTokenRepository refreshTokenRepository,
             EmailService emailService,
             TwoFactorChallengeService twoFactorChallengeService,
-            TotpService totpService
+            TotpService totpService,
+            JwtService jwtService
     ) {
         this.userRepository = userRepository;
         this.emailVerificationCodeRepository = emailVerificationCodeRepository;
@@ -70,6 +72,7 @@ public class UserService {
         this.emailService = emailService;
         this.twoFactorChallengeService = twoFactorChallengeService;
         this.totpService = totpService;
+        this.jwtService = jwtService;
     }
 
     public RegisterClientResponse registerClient(RegisterClientRequest request) {
@@ -180,6 +183,7 @@ public class UserService {
         return response;
     }
 
+    @Transactional
     public LoginResponse login(LoginRequest request) {
         if (request.getEmail() == null || request.getEmail().isBlank()) {
             throw new RuntimeException("Email is required");
@@ -216,6 +220,7 @@ public class UserService {
             response.setAuthenticated(false);
             response.setTwoFactorRequired(true);
             response.setTempToken(tempToken);
+            response.setAccessToken(null);
             response.setRefreshToken(null);
             response.setMessage("2FA required. Verify using /api/v1/auth/2fa/verify");
             return response;
@@ -232,11 +237,13 @@ public class UserService {
         response.setLastLoginAt(updatedUser.getLastLoginAt());
         response.setAuthenticated(true);
         response.setTwoFactorRequired(false);
+        response.setAccessToken(jwtService.generateAccessToken(updatedUser));
         response.setRefreshToken(issueRefreshTokenForUser(updatedUser.getId()));
         response.setMessage("Login successful");
         return response;
     }
 
+    @Transactional
     public VerifyTwoFactorResponse verifyTwoFactor(VerifyTwoFactorRequest request) {
         if (request.getTempToken() == null || request.getTempToken().isBlank()) {
             throw new RuntimeException("tempToken is required");
@@ -269,6 +276,7 @@ public class UserService {
         response.setStatus(updatedUser.getStatus());
         response.setLastLoginAt(updatedUser.getLastLoginAt());
         response.setAuthenticated(true);
+        response.setAccessToken(jwtService.generateAccessToken(updatedUser));
         response.setRefreshToken(issueRefreshTokenForUser(updatedUser.getId()));
         response.setMessage("2FA verification successful");
         return response;
@@ -304,6 +312,7 @@ public class UserService {
         response.setStatus(user.getStatus());
         response.setLastLoginAt(user.getLastLoginAt());
         response.setAuthenticated(true);
+        response.setAccessToken(jwtService.generateAccessToken(user));
         response.setRefreshToken(issueRefreshTokenForUser(user.getId()));
         response.setMessage("Token refreshed successfully");
         return response;

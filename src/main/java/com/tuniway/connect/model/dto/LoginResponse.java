@@ -15,6 +15,7 @@ public class LoginResponse {
     private boolean authenticated;
     private boolean twoFactorRequired;
     private String tempToken;
+    private String accessToken;
     private String refreshToken;
     private String message;
 
@@ -93,6 +94,14 @@ public class LoginResponse {
 
     public void setTempToken(String tempToken) {
         this.tempToken = tempToken;
+    }
+
+    public String getAccessToken() {
+        return accessToken;
+    }
+
+    public void setAccessToken(String accessToken) {
+        this.accessToken = accessToken;
     }
 
     public String getRefreshToken() {

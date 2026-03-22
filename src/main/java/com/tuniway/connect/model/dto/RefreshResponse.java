@@ -13,6 +13,7 @@ public class RefreshResponse {
     private AccountStatus status;
     private Instant lastLoginAt;
     private boolean authenticated;
+    private String accessToken;
     private String refreshToken;
     private String message;
 
@@ -65,6 +66,14 @@ public class RefreshResponse {
 
     public void setAuthenticated(boolean authenticated) {
         this.authenticated = authenticated;
+    }
+
+    public String getAccessToken() {
+        return accessToken;
+    }
+
+    public void setAccessToken(String accessToken) {
+        this.accessToken = accessToken;
     }
 
     public String getRefreshToken() {
