@@ -90,15 +90,8 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<LogoutResponse> logout(@RequestBody LogoutRequest request) {
-        try {
-            LogoutResponse response = userService.logout(request);
-            return new ResponseEntity<>(response, HttpStatus.OK);
-        } catch (RuntimeException e) {
-            LogoutResponse errorResponse = new LogoutResponse();
-            errorResponse.setSuccess(false);
-            errorResponse.setMessage(e.getMessage());
-            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
-        }
+    public ResponseEntity<LogoutResponse> logout(@RequestBody(required = false) LogoutRequest request) {
+        LogoutResponse response = userService.logout(request);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }

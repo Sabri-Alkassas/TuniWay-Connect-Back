@@ -311,19 +311,14 @@ public class UserService {
 
     @Transactional
     public LogoutResponse logout(LogoutRequest request) {
-        if (request.getRefreshToken() == null || request.getRefreshToken().isBlank()) {
-            throw new RuntimeException("refreshToken is required");
-        }
-
-        String tokenHash = sha256Hex(request.getRefreshToken());
-        int updatedRows = refreshTokenRepository.revokeIfNotRevoked(tokenHash);
-        if (updatedRows == 0) {
-            throw new RuntimeException("Invalid refresh token");
+        if (request != null && request.getRefreshToken() != null && !request.getRefreshToken().isBlank()) {
+            String tokenHash = sha256Hex(request.getRefreshToken());
+            refreshTokenRepository.revokeIfNotRevoked(tokenHash);
         }
 
         LogoutResponse response = new LogoutResponse();
         response.setSuccess(true);
-        response.setMessage("Logout successful");
+        response.setMessage("Logout processed");
         return response;
     }
 
