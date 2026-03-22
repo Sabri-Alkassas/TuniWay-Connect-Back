@@ -1,6 +1,7 @@
 package com.tuniway.connect.service;
 
 import com.tuniway.connect.model.entity.User;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,6 +38,18 @@ public class JwtService {
                 .expiration(Date.from(expiresAt))
                 .signWith(getSigningKey())
                 .compact();
+    }
+
+    public Claims validateToken(String token) {
+        try {
+            return Jwts.parser()
+                    .verifyWith(getSigningKey())
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+        } catch (Exception e) {
+            throw new RuntimeException("JWT validation failed: " + e.getMessage());
+        }
     }
 
     private SecretKey getSigningKey() {
