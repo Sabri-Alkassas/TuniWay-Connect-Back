@@ -4,6 +4,7 @@ import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
 import com.tuniway.connect.model.dto.UpdatedEmployeeRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeResponse;
+import com.tuniway.connect.model.dto.UpdatedEmployeeStatusRequest;
 import com.tuniway.connect.service.AdminService;
 
 import java.util.UUID;
@@ -56,5 +57,18 @@ public class AdminController {
         }
     }
     
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/staff-accounts/{id}/status")
+    public ResponseEntity<UpdatedEmployeeResponse> changeStaffAccountStatus(@RequestBody UpdatedEmployeeStatusRequest request, @PathVariable("id") UUID employeeId) {
+        try {
+            UpdatedEmployeeResponse response = adminService.changeEmployeeStatus(employeeId, request);
+            return new ResponseEntity<>(response, HttpStatus.OK);
 
+        } catch (RuntimeException e) {
+            UpdatedEmployeeResponse errorResponse = new UpdatedEmployeeResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
 }

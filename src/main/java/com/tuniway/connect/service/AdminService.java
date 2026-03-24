@@ -4,6 +4,7 @@ import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
 import com.tuniway.connect.model.dto.UpdatedEmployeeRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeResponse;
+import com.tuniway.connect.model.dto.UpdatedEmployeeStatusRequest;
 import com.tuniway.connect.model.entity.AccountStatus;
 import com.tuniway.connect.model.entity.EmployeeProfile;
 import com.tuniway.connect.model.entity.Role;
@@ -23,6 +24,29 @@ public class AdminService {
     public AdminService(UserRepository userRepository, EmployeeProfileRepository employeeProfileRepository) {
         this.userRepository = userRepository;
         this.employeeProfileRepository = employeeProfileRepository;
+    }
+
+    public UpdatedEmployeeResponse changeEmployeeStatus(UUID employeeId, UpdatedEmployeeStatusRequest request) {
+        User user = userRepository.findById(employeeId)
+                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+
+        if (request.getStatus() == null || request.getStatus().isBlank()) {
+            throw new IllegalArgumentException("Status is required");
+        }
+
+        try {
+            AccountStatus newStatus = AccountStatus.valueOf(request.getStatus().toUpperCase());
+            user.setStatus(newStatus);
+            userRepository.save(user);
+
+            UpdatedEmployeeResponse response = new UpdatedEmployeeResponse();
+            response.setSuccess(true);
+            response.setMessage("Employee status updated successfully");
+            return response;
+
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid status value. Allowed values are: ACTIVE, INACTIVE");
+        }
     }
 
     public UpdatedEmployeeResponse updateEmployee(UUID employeeId, UpdatedEmployeeRequest request) {
