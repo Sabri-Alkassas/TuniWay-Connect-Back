@@ -41,7 +41,7 @@ public class AdminService {
         }
 
         if (request.getLicense_number() != null && !request.getLicense_number().isBlank()) {
-            if (employeeProfileRepository.existsByLicense_number(request.getLicense_number())) {
+            if (employeeProfileRepository.existsByLicenseNumber(request.getLicense_number())) {
                 throw new IllegalArgumentException("An employee with this license number already exists");
             }
             profile.setLicenseNumber(request.getLicense_number());
@@ -59,7 +59,7 @@ public class AdminService {
         }
 
         if (request.getEmployee_code() != null && !request.getEmployee_code().isBlank()) {
-            if (employeeProfileRepository.existsByEmployee_code(request.getEmployee_code())) {
+            if (employeeProfileRepository.existsByEmployeeCode(request.getEmployee_code())) {
                 throw new IllegalArgumentException("An employee with this employee code already exists");
             }
             profile.setEmployeeCode(request.getEmployee_code());
@@ -85,11 +85,11 @@ public class AdminService {
             throw new IllegalArgumentException("An employee with this email already exists");
         }
 
-        if (employeeProfileRepository.existsByEmployee_code(request.getEmployee_code())) {
+        if (employeeProfileRepository.existsByEmployeeCode(request.getEmployee_code())) {
             throw new IllegalArgumentException("An employee with this employee code already exists");
         }
 
-        if (employeeProfileRepository.existsByLicense_number(request.getLicense_number())) {
+        if (employeeProfileRepository.existsByLicenseNumber(request.getLicense_number())) {
             throw new IllegalArgumentException("An employee with this license number already exists");
         }
 
