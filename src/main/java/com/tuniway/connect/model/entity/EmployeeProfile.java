@@ -13,6 +13,18 @@ public class EmployeeProfile {
     @Id
     private UUID userId;
 
+    @Column(name = "employee_code", unique = true)
+    private String employeeCode;
+
+    @Column(name = "full_name")
+    private String fullName;
+
+    @Column(name = "phone")
+    private String phone;
+
+    @Column(name = "license_number", unique = true)
+    private String licenseNumber;
+
     @Column(name = "two_factor_enabled")
     private Boolean twoFactorEnabled;
 
@@ -28,6 +40,38 @@ public class EmployeeProfile {
 
     public void setUserId(UUID userId) {
         this.userId = userId;
+    }
+
+    public String getEmployeeCode() {
+        return employeeCode;
+    }
+
+    public void setEmployeeCode(String employeeCode) {
+        this.employeeCode = employeeCode;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public String getLicenseNumber() {
+        return licenseNumber;
+    }
+
+    public void setLicenseNumber(String licenseNumber) {
+        this.licenseNumber = licenseNumber;
     }
 
     public Boolean getTwoFactorEnabled() {
