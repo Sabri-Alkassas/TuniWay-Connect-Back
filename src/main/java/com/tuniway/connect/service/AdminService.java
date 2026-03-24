@@ -26,6 +26,20 @@ public class AdminService {
         this.employeeProfileRepository = employeeProfileRepository;
     }
 
+    public UpdatedEmployeeResponse deleteEmployee(UUID employeeId) {
+        User user = userRepository.findById(employeeId)
+                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+
+        employeeProfileRepository.findByUserId(employeeId).ifPresent(employeeProfileRepository::delete);
+
+        userRepository.delete(user);
+
+        UpdatedEmployeeResponse response = new UpdatedEmployeeResponse();
+        response.setSuccess(true);
+        response.setMessage("Employee deleted successfully");
+        return response;
+    }
+
     public UpdatedEmployeeResponse changeEmployeeStatus(UUID employeeId, UpdatedEmployeeStatusRequest request) {
         User user = userRepository.findById(employeeId)
                 .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
