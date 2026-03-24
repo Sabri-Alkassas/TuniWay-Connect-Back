@@ -2,6 +2,8 @@ package com.tuniway.connect.service;
 
 import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
+import com.tuniway.connect.model.dto.UpdatedEmployeeRequest;
+import com.tuniway.connect.model.dto.UpdatedEmployeeResponse;
 import com.tuniway.connect.model.entity.AccountStatus;
 import com.tuniway.connect.model.entity.EmployeeProfile;
 import com.tuniway.connect.model.entity.Role;
@@ -21,6 +23,55 @@ public class AdminService {
     public AdminService(UserRepository userRepository, EmployeeProfileRepository employeeProfileRepository) {
         this.userRepository = userRepository;
         this.employeeProfileRepository = employeeProfileRepository;
+    }
+
+    public UpdatedEmployeeResponse updateEmployee(UUID employeeId, UpdatedEmployeeRequest request) {
+        User user = userRepository.findById(employeeId)
+                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+
+        EmployeeProfile profile = employeeProfileRepository.findByUserId(employeeId)
+                .orElseThrow(() -> new IllegalArgumentException("Employee profile not found"));
+
+        if (request.getFullName() != null && !request.getFullName().isBlank()) {
+            profile.setFullName(request.getFullName());
+        }
+
+        if (request.getPhone() != null && !request.getPhone().isBlank()) {
+            profile.setPhone(request.getPhone());
+        }
+
+        if (request.getLicense_number() != null && !request.getLicense_number().isBlank()) {
+            if (employeeProfileRepository.existsByLicense_number(request.getLicense_number())) {
+                throw new IllegalArgumentException("An employee with this license number already exists");
+            }
+            profile.setLicenseNumber(request.getLicense_number());
+        }
+
+        if (request.getEmail() != null && !request.getEmail().isBlank()) {
+            if (userRepository.existsByEmail(request.getEmail())) {
+                throw new IllegalArgumentException("An employee with this email already exists");
+            }
+            user.setEmail(request.getEmail());
+        }
+
+        if (request.getPassword_hash() != null && !request.getPassword_hash().isBlank()) {
+            user.setPassword_hash(request.getPassword_hash());
+        }
+
+        if (request.getEmployee_code() != null && !request.getEmployee_code().isBlank()) {
+            if (employeeProfileRepository.existsByEmployee_code(request.getEmployee_code())) {
+                throw new IllegalArgumentException("An employee with this employee code already exists");
+            }
+            profile.setEmployeeCode(request.getEmployee_code());
+        }
+
+        employeeProfileRepository.save(profile);
+        userRepository.save(user);
+
+        UpdatedEmployeeResponse response = new UpdatedEmployeeResponse();
+        response.setSuccess(true);
+        response.setMessage("Employee updated successfully");
+        return response;
     }
 
     public RegisterEmployeeResponse registerEmployee(RegisterEmployeeRequest request) {

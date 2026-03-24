@@ -11,6 +11,7 @@ import java.util.UUID;
 public interface EmployeeProfileRepository extends JpaRepository<EmployeeProfile, UUID> {
     Optional<EmployeeProfile> findByEmployee_code(String employee_code);
     Optional<EmployeeProfile> findByLicense_number(String license_number);
+    Optional<EmployeeProfile> findByUserId(UUID userId);
     boolean existsByEmployee_code(String employee_code);
     boolean existsByLicense_number(String license_number);
 }
