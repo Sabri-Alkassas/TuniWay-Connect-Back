@@ -6,8 +6,6 @@ import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.dto.ShiftEndResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
-import com.tuniway.connect.model.dto.ShiftStartRequest;
-import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.entity.ShiftStopEvent;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.model.entity.WorkShift;
