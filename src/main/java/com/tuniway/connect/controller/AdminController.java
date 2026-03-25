@@ -4,6 +4,7 @@ import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
 import com.tuniway.connect.model.dto.UpdatedEmployeeRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeResponse;
+import com.tuniway.connect.model.dto.UpdatedEmployeeStatusRequest;
 import com.tuniway.connect.service.AdminService;
 
 import java.util.UUID;
@@ -14,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -56,5 +58,33 @@ public class AdminController {
         }
     }
     
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/staff-accounts/{id}/status")
+    public ResponseEntity<UpdatedEmployeeResponse> changeStaffAccountStatus(@RequestBody UpdatedEmployeeStatusRequest request, @PathVariable("id") UUID employeeId) {
+        try {
+            UpdatedEmployeeResponse response = adminService.changeEmployeeStatus(employeeId, request);
+            return new ResponseEntity<>(response, HttpStatus.OK);
 
+        } catch (RuntimeException e) {
+            UpdatedEmployeeResponse errorResponse = new UpdatedEmployeeResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/staff-accounts/{id}")
+    public ResponseEntity<UpdatedEmployeeResponse> deleteStaffAccount(@PathVariable("id") UUID employeeId) {
+        try {
+            UpdatedEmployeeResponse response = adminService.deleteEmployee(employeeId);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (RuntimeException e) {
+            UpdatedEmployeeResponse errorResponse = new UpdatedEmployeeResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
 }

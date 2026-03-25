@@ -9,9 +9,9 @@ import java.util.UUID;
 
 @Repository
 public interface EmployeeProfileRepository extends JpaRepository<EmployeeProfile, UUID> {
-    Optional<EmployeeProfile> findByEmployeeCode(String employee_code);
+    Optional<EmployeeProfile> findByEmployeeCode(String employeeCode);
     Optional<EmployeeProfile> findByLicenseNumber(String licenseNumber);
     Optional<EmployeeProfile> findByUserId(UUID userId);
-    boolean existsByEmployeeCode(String employee_code);
-    boolean existsByLicenseNumber(String LicenseNumber);
+    boolean existsByEmployeeCode(String employeeCode);
+    boolean existsByLicenseNumber(String licenseNumber);
 }
