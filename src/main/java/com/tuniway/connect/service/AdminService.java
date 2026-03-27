@@ -4,6 +4,7 @@ import com.tuniway.connect.model.dto.CreateTransportRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
 import com.tuniway.connect.model.dto.TransportResponse;
+import com.tuniway.connect.model.dto.UpdateTransportRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeResponse;
 import com.tuniway.connect.model.dto.UpdatedEmployeeStatusRequest;
@@ -12,6 +13,7 @@ import com.tuniway.connect.model.entity.EmployeeProfile;
 import com.tuniway.connect.model.entity.Role;
 import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.model.entity.User;
+import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.repository.EmployeeProfileRepository;
 import com.tuniway.connect.repository.TransportRepository;
 import com.tuniway.connect.repository.UserRepository;
@@ -174,6 +176,35 @@ public class AdminService {
         return response;
     }
 
+    public TransportResponse updateTransport(UUID transportId, UpdateTransportRequest request) {
+        Transport transport = transportRepository.findById(transportId)
+                .orElseThrow(() -> new IllegalArgumentException("Transport not found"));
+
+        if (request.getName() != null && !request.getName().isBlank()) {
+            transport.setName(request.getName());
+        }
+
+        if (request.getTransportType() != null) {
+            transport.setType(request.getTransportType());
+        }
+
+
+        if (request.getCode() != null && !request.getCode().isBlank()) {
+            transport.setCode(request.getCode());
+        }
+
+        if (request.getTransportType() != null) {
+            transport.setType(request.getTransportType());
+        }
+
+        Transport updatedTransport = transportRepository.save(transport);
+
+        return  new TransportResponse(updatedTransport.getCode(),
+                                      updatedTransport.getType(),
+                                      "Transport updated successfully",
+                                      true);
+    }
+  
     @Transactional
     public TransportResponse createTransport(CreateTransportRequest request) {
         if (request.getCode() == null || request.getCode().isBlank()) {

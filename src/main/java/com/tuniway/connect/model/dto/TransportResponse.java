@@ -1,12 +1,14 @@
 package com.tuniway.connect.model.dto;
 
+import com.tuniway.connect.model.entity.TransportType;
+
 public class TransportResponse {
     private String code;
-    private String type;
+    private TransportType type;
     private String message;
     private boolean success;
 
-    public TransportResponse(String code, String type, String message, boolean success) {
+    public TransportResponse(String code, TransportType type, String message, boolean success) {
         this.code = code;
         this.type = type;
         this.message = message;

@@ -4,6 +4,7 @@ import com.tuniway.connect.model.dto.CreateTransportRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
 import com.tuniway.connect.model.dto.TransportResponse;
+import com.tuniway.connect.model.dto.UpdateTransportRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeResponse;
 import com.tuniway.connect.model.dto.UpdatedEmployeeStatusRequest;
@@ -90,6 +91,17 @@ public class AdminController {
         }
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/transports/{id}")
+    public ResponseEntity<TransportResponse> updateTransport(@RequestBody UpdateTransportRequest request, @PathVariable("id") UUID transportId) {
+        try {
+            TransportResponse response = adminService.updateTransport(transportId, request);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (RuntimeException e) {
+            TransportResponse errorResponse = new TransportResponse(e.getMessage(), false);
+    }
+    
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/transports")
     public ResponseEntity<TransportResponse> createTransports(@RequestBody CreateTransportRequest request) {
