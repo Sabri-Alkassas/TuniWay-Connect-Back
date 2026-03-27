@@ -3,6 +3,7 @@ package com.tuniway.connect.controller;
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
+import com.tuniway.connect.model.dto.EmployeeShiftProgressResponse;
 import com.tuniway.connect.model.dto.ShiftEndResponse;
 import com.tuniway.connect.model.dto.ShiftStartRequest;
 import com.tuniway.connect.model.dto.ShiftStartResponse;
@@ -101,7 +102,7 @@ public class EmployeeController {
                                                                  Principal principal) {
         try {
             User user = requireAuthenticatedUser(principal);
-            EmployeeStopActionResponse response = employeeService.arriveAtStop(user.getId(), shiftId, stopId);
+            EmployeeStopActionResponse response = employeeService.arriveAtStop(user, shiftId, stopId);
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {
             EmployeeStopActionResponse errorResponse = new EmployeeStopActionResponse();
@@ -119,7 +120,7 @@ public class EmployeeController {
                                                                  Principal principal) {
         try {
             User user = requireAuthenticatedUser(principal);
-            EmployeeStopActionResponse response = employeeService.departFromStop(user.getId(), shiftId, stopId);
+            EmployeeStopActionResponse response = employeeService.departFromStop(user, shiftId, stopId);
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {
             EmployeeStopActionResponse errorResponse = new EmployeeStopActionResponse();
@@ -137,5 +138,20 @@ public class EmployeeController {
 
         return userRepository.findByEmail(principal.getName())
                 .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+    @PreAuthorize("hasRole('EMPLOYEE')")
+    @GetMapping("/shifts/{id}/progress")
+    public ResponseEntity<EmployeeShiftProgressResponse> getShiftProgress(@PathVariable("id") UUID shiftId,
+                                                                        Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            EmployeeShiftProgressResponse response = employeeService.getShiftProgress(user.getId(), shiftId);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            EmployeeShiftProgressResponse errorResponse = new EmployeeShiftProgressResponse();
+            errorResponse.setMessage(e.getMessage());
+            errorResponse.setShiftId(shiftId.toString());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
     }
 }
