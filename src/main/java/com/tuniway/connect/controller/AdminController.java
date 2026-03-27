@@ -2,6 +2,8 @@ package com.tuniway.connect.controller;
 
 import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
+import com.tuniway.connect.model.dto.TransportResponse;
+import com.tuniway.connect.model.dto.UpdateTransportRouteRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeResponse;
 import com.tuniway.connect.model.dto.UpdatedEmployeeStatusRequest;
@@ -84,6 +86,19 @@ public class AdminController {
             UpdatedEmployeeResponse errorResponse = new UpdatedEmployeeResponse();
             errorResponse.setSuccess(false);
             errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/transports/{id}/route")
+    public ResponseEntity<TransportResponse> updateTransportRoute(@RequestBody UpdateTransportRouteRequest request, @PathVariable("id") UUID transportId) {
+        try {
+            TransportResponse response = adminService.updateTransportRoute(transportId, request);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (RuntimeException e) {
+            TransportResponse errorResponse = new TransportResponse(e.getMessage(), false);
             return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
         }
     }

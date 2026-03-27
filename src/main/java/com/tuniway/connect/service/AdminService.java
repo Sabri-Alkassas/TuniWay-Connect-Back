@@ -2,6 +2,8 @@ package com.tuniway.connect.service;
 
 import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
+import com.tuniway.connect.model.dto.TransportResponse;
+import com.tuniway.connect.model.dto.UpdateTransportRouteRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeResponse;
 import com.tuniway.connect.model.dto.UpdatedEmployeeStatusRequest;
@@ -9,7 +11,9 @@ import com.tuniway.connect.model.entity.AccountStatus;
 import com.tuniway.connect.model.entity.EmployeeProfile;
 import com.tuniway.connect.model.entity.Role;
 import com.tuniway.connect.model.entity.User;
+import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.repository.EmployeeProfileRepository;
+import com.tuniway.connect.repository.TransportRepository;
 import com.tuniway.connect.repository.UserRepository;
 
 import org.springframework.stereotype.Service;
@@ -20,10 +24,12 @@ import java.util.UUID;
 public class AdminService {
     private final UserRepository userRepository;
     private final EmployeeProfileRepository employeeProfileRepository;
+    private final TransportRepository transportRepository;
 
-    public AdminService(UserRepository userRepository, EmployeeProfileRepository employeeProfileRepository) {
+    public AdminService(UserRepository userRepository, EmployeeProfileRepository employeeProfileRepository, TransportRepository transportRepository) {
         this.userRepository = userRepository;
         this.employeeProfileRepository = employeeProfileRepository;
+        this.transportRepository = transportRepository;
     }
 
     public UpdatedEmployeeResponse deleteEmployee(UUID employeeId) {
@@ -164,5 +170,19 @@ public class AdminService {
         response.setMessage("Employee registered successfully");
 
         return response;
+    }
+
+    public TransportResponse updateTransportRoute(UUID transportId, UpdateTransportRouteRequest request) {
+        Transport transport = transportRepository.findById(transportId)
+                .orElseThrow(() -> new IllegalArgumentException("Transport not found"));
+        
+        if (request.getRoute() == null || request.getRoute().isBlank()) {
+            throw new IllegalArgumentException("Route is required");
+        }
+
+        transport.setRoute_name(request.getRoute());
+        transportRepository.save(transport);
+
+        return new TransportResponse(transport.getCode(), transport.getType(), "Transport route updated successfully", true);
     }
 }
