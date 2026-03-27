@@ -1,0 +1,45 @@
+package com.tuniway.connect.model.dto;
+
+public class TransportResponse {
+    private String code;
+    private String type;
+    private String message;
+    private boolean success;
+
+    public TransportResponse(String code, String type, String message, boolean success) {
+        this.code = code;
+        this.type = type;
+        this.message = message;
+        this.success = success;
+    }
+
+    public TransportResponse(String message, boolean success) {
+        this.message = message;
+        this.success = success;
+    }
+
+    public String getCode() {
+        return code;
+    }
+    public void setCode(String code) {
+        this.code = code;
+    }
+    public String getType() {
+        return type;
+    }
+    public void setType(String type) {
+        this.type = type;
+    }
+    public String getMessage() {
+        return message;
+    }
+    public void setMessage(String message) {
+        this.message = message;
+    }
+    public boolean isSuccess() {
+        return success;
+    }
+    public void setSuccess(boolean success) {
+        this.success = success;
+    }
+}
