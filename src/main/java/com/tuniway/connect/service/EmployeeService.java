@@ -11,7 +11,6 @@ import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.model.entity.WorkShift;
 import com.tuniway.connect.repository.ShiftStopEventRepository;
 import com.tuniway.connect.repository.WorkShiftRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.tuniway.connect.model.dto.EmployeeShiftProgressResponse;
@@ -55,16 +54,6 @@ public class EmployeeService {
 
         List<EmployeeScheduleResponse.ShiftDto> shiftDtos = shifts.stream()
                 .map(shift -> new EmployeeScheduleResponse.ShiftDto(
-                        shift.getId().toString(),
-                        shift.getTransport().getId().toString(),
-                        shift.getTransport().getName(),
-                        shift.getTransport().getType(),
-                        shift.getTransport().getZone(),
-                        shift.getScheduleStart(),
-                        shift.getScheduleEnd(),
-                        shift.getStatus(),
-                        shift.getActualStart(),
-                        shift.getActualEnd()
                 ))
                 .collect(Collectors.toList());
 
