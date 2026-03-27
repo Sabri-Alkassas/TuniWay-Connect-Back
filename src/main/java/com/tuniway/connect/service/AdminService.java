@@ -4,6 +4,7 @@ import com.tuniway.connect.model.dto.CreateTransportRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
 import com.tuniway.connect.model.dto.TransportResponse;
+import com.tuniway.connect.model.dto.UpdateTransportRouteRequest;
 import com.tuniway.connect.model.dto.UpdateTransportRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeRequest;
 import com.tuniway.connect.model.dto.UpdatedEmployeeResponse;
@@ -176,6 +177,20 @@ public class AdminService {
         return response;
     }
 
+    public TransportResponse updateTransportRoute(UUID transportId, UpdateTransportRouteRequest request) {
+        Transport transport = transportRepository.findById(transportId)
+                .orElseThrow(() -> new IllegalArgumentException("Transport not found"));
+        
+        if (request.getRoute() == null || request.getRoute().isBlank()) {
+            throw new IllegalArgumentException("Route is required");
+        }
+
+        transport.setRoute_name(request.getRoute());
+        transportRepository.save(transport);
+
+        return new TransportResponse(transport.getCode(), transport.getType(), "Transport route updated successfully", true);
+    }
+  
     public TransportResponse updateTransport(UUID transportId, UpdateTransportRequest request) {
         Transport transport = transportRepository.findById(transportId)
                 .orElseThrow(() -> new IllegalArgumentException("Transport not found"));
