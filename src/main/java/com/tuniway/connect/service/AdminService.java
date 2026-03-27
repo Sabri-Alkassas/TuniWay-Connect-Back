@@ -1,5 +1,6 @@
 package com.tuniway.connect.service;
 
+import com.tuniway.connect.model.dto.CreateTransportRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
 import com.tuniway.connect.model.dto.TransportResponse;
@@ -10,11 +11,14 @@ import com.tuniway.connect.model.dto.UpdatedEmployeeStatusRequest;
 import com.tuniway.connect.model.entity.AccountStatus;
 import com.tuniway.connect.model.entity.EmployeeProfile;
 import com.tuniway.connect.model.entity.Role;
+import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.repository.EmployeeProfileRepository;
 import com.tuniway.connect.repository.TransportRepository;
 import com.tuniway.connect.repository.UserRepository;
+
+import jakarta.transaction.Transactional;
 
 import org.springframework.stereotype.Service;
 
@@ -199,5 +203,37 @@ public class AdminService {
                                       updatedTransport.getType(),
                                       "Transport updated successfully",
                                       true);
+    }
+  
+    @Transactional
+    public TransportResponse createTransport(CreateTransportRequest request) {
+        if (request.getCode() == null || request.getCode().isBlank()) {
+            throw new IllegalArgumentException("Transport code is required");
+        }
+        if (request.getName() == null || request.getName().isBlank()) {
+            throw new IllegalArgumentException("Transport name is required");
+        }
+        if (request.getTransportType() == null) {
+            throw new IllegalArgumentException("Transport type is required");
+        }
+        if (request.getRouteName() == null || request.getRouteName().isBlank()) {
+            throw new IllegalArgumentException("Route name is required");
+        }
+
+        Transport transport = new Transport();
+        transport.setId(UUID.randomUUID());
+        transport.setCode(request.getCode());
+        transport.setName(request.getName());
+        transport.setType(request.getTransportType());
+        transport.setRoute_name(request.getRouteName());
+        transport.setStart_point(request.getStart_point());
+        transport.setEnd_point(request.getEnd_point());
+        transport.setOperating_zone(request.getOperating_zone());
+        transport.setActive(request.getIs_active() != null ? request.getIs_active() : true);
+        transport.setZone(request.getZone());
+
+        Transport savedTransport = transportRepository.save(transport);
+
+        return new TransportResponse(savedTransport.getCode(), savedTransport.getType().name() , "Transport created successfully", true);
     }
 }

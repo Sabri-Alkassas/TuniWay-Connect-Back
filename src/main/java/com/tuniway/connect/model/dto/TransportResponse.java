@@ -26,10 +26,10 @@ public class TransportResponse {
     public void setCode(String code) {
         this.code = code;
     }
-    public TransportType getType() {
+    public String getType() {
         return type;
     }
-    public void setType(TransportType type) {
+    public void setType(String type) {
         this.type = type;
     }
     public String getMessage() {
@@ -45,4 +45,3 @@ public class TransportResponse {
         this.success = success;
     }
 }
-
