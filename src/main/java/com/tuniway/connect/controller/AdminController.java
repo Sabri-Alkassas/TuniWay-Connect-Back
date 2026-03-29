@@ -100,6 +100,8 @@ public class AdminController {
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {
             TransportResponse errorResponse = new TransportResponse(e.getMessage(), false);
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
     }
             
     @PreAuthorize("hasRole('ADMIN')")
@@ -111,6 +113,8 @@ public class AdminController {
 
         } catch (RuntimeException e) {
             TransportResponse errorResponse = new TransportResponse(e.getMessage(), false);
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
     }
     
     @PreAuthorize("hasRole('ADMIN')")

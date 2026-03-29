@@ -17,6 +17,7 @@ public class Transport {
     private String name;
 
     @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
     private TransportType type;
 
     @Column(nullable = false)
