@@ -14,7 +14,6 @@ import com.tuniway.connect.model.entity.EmployeeProfile;
 import com.tuniway.connect.model.entity.Role;
 import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.model.entity.User;
-import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.repository.EmployeeProfileRepository;
 import com.tuniway.connect.repository.TransportRepository;
 import com.tuniway.connect.repository.UserRepository;
@@ -208,10 +207,6 @@ public class AdminService {
             transport.setCode(request.getCode());
         }
 
-        if (request.getTransportType() != null) {
-            transport.setType(request.getTransportType());
-        }
-
         Transport updatedTransport = transportRepository.save(transport);
 
         return  new TransportResponse(updatedTransport.getCode(),
@@ -249,6 +244,6 @@ public class AdminService {
 
         Transport savedTransport = transportRepository.save(transport);
 
-        return new TransportResponse(savedTransport.getCode(), savedTransport.getType().name() , "Transport created successfully", true);
+        return new TransportResponse(savedTransport.getCode(), savedTransport.getType(), "Transport created successfully", true);
     }
 }

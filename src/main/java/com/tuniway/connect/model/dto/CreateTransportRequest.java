@@ -1,11 +1,15 @@
 package com.tuniway.connect.model.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tuniway.connect.model.entity.TransportType;
 
 public class CreateTransportRequest {
     private String code;
     private String name;
-    private String route_name;
+    @JsonProperty("route_name")
+    @JsonAlias("routeName")
+    private String routeName;
     private TransportType transportType;
     private String start_point;
     private String end_point;
@@ -30,11 +34,11 @@ public class CreateTransportRequest {
     }
 
     public String getRouteName() {
-        return route_name;
+        return routeName;
     }
 
-    public void setRouteName(String route_name) {
-        this.route_name = route_name;
+    public void setRouteName(String routeName) {
+        this.routeName = routeName;
     }
 
     public String getStart_point() {
