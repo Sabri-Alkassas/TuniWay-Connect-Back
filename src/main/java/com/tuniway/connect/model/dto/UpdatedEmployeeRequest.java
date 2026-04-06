@@ -5,6 +5,7 @@ public class UpdatedEmployeeRequest {
     private String phone;
     private String license_number;
     private String employee_code;
+    private String admin_code;
     private String email;
     private String password_hash;
 
@@ -54,5 +55,13 @@ public class UpdatedEmployeeRequest {
 
     public void setEmployee_code(String employee_code) {
         this.employee_code = employee_code;
+    }
+
+    public String getAdmin_code() {
+        return admin_code;
+    }
+
+    public void setAdmin_code(String admin_code) {
+        this.admin_code = admin_code;
     }
 }

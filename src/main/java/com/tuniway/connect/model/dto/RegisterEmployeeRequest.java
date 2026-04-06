@@ -1,5 +1,7 @@
 package com.tuniway.connect.model.dto;
 
+import com.tuniway.connect.model.entity.Role;
+
 public class RegisterEmployeeRequest {
     private String email;
     private String password_hash;
@@ -7,6 +9,8 @@ public class RegisterEmployeeRequest {
     private String phone;
     private String license_number;
     private String employee_code;
+    private String admin_code;
+    private Role role;
 
     
     public String getLicense_number() {
@@ -23,6 +27,14 @@ public class RegisterEmployeeRequest {
 
     public void setEmployee_code(String employee_code) {
         this.employee_code = employee_code;
+    }
+
+    public String getAdmin_code() {
+        return admin_code;
+    }
+
+    public void setAdmin_code(String admin_code) {
+        this.admin_code = admin_code;
     }
 
     public String getPhone() {
@@ -55,5 +67,13 @@ public class RegisterEmployeeRequest {
 
     public void setPassword_hash(String password_hash) {
         this.password_hash = password_hash;
+    }
+
+    public Role getRole() {
+        return role;
+    }
+
+    public void setRole(Role role) {
+        this.role = role;
     }
 }
