@@ -5,25 +5,40 @@ import com.tuniway.connect.model.dto.ClientDashboardResponse;
 import com.tuniway.connect.model.dto.UpdateClientAccountRequest;
 import com.tuniway.connect.model.entity.AccountStatus;
 import com.tuniway.connect.model.entity.ClientProfile;
+import com.tuniway.connect.model.entity.EmailVerificationCode;
 import com.tuniway.connect.model.entity.Role;
 import com.tuniway.connect.model.entity.User;
+import com.tuniway.connect.repository.EmailVerificationCodeRepository;
 import com.tuniway.connect.repository.ClientProfileRepository;
 import com.tuniway.connect.repository.UserRepository;
 import jakarta.transaction.Transactional;
+import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 
 @Service
 public class ClientService {
     private final UserRepository userRepository;
     private final ClientProfileRepository clientProfileRepository;
+    private final EmailVerificationCodeRepository emailVerificationCodeRepository;
+    private final EmailService emailService;
 
-    public ClientService(UserRepository userRepository, ClientProfileRepository clientProfileRepository) {
+    public ClientService(
+        UserRepository userRepository,
+        ClientProfileRepository clientProfileRepository,
+        EmailVerificationCodeRepository emailVerificationCodeRepository,
+        EmailService emailService
+    ) {
         this.userRepository = userRepository;
         this.clientProfileRepository = clientProfileRepository;
+        this.emailVerificationCodeRepository = emailVerificationCodeRepository;
+        this.emailService = emailService;
     }
 
     public ClientDashboardResponse getDashboard(UUID clientId) {
@@ -68,14 +83,17 @@ public class ClientService {
             if (!email.equalsIgnoreCase(user.getEmail()) && userRepository.existsByEmail(email)) {
                 throw new IllegalArgumentException("A client account with this email already exists");
             }
-            user.setEmail(email);
-            hasChanges = true;
+            if (!email.equalsIgnoreCase(user.getEmail())) {
+                user.setEmail(email);
+                user.setStatus(AccountStatus.INACTIVE);
+                issueEmailVerificationCode(user);
+                hasChanges = true;
+            }
         }
 
         String password = normalizeToNull(request.getPassword_hash());
         if (password != null) {
-            user.setPassword_hash(password);
-            hasChanges = true;
+            throw new IllegalArgumentException("Password changes are not supported through account update. Use a dedicated password change flow.");
         }
 
         String username = normalizeToNull(request.getUsername());
@@ -119,6 +137,28 @@ public class ClientService {
         userRepository.save(user);
         clientProfileRepository.save(profile);
         return buildAccountResponse(user, profile, "Client account updated successfully");
+    }
+
+    private void issueEmailVerificationCode(User user) {
+        String codeValue = generateVerificationCode();
+
+        EmailVerificationCode verificationCode = new EmailVerificationCode();
+        verificationCode.setEmail(user.getEmail());
+        verificationCode.setCode(codeValue);
+        verificationCode.setExpiresAt(Instant.now().plus(10, ChronoUnit.MINUTES));
+        verificationCode.setConsumed(false);
+        emailVerificationCodeRepository.save(verificationCode);
+
+        try {
+            emailService.sendVerificationCode(user.getEmail(), codeValue);
+        } catch (MailException e) {
+            throw new IllegalArgumentException("Failed to send verification email: " + e.getMessage());
+        }
+    }
+
+    private String generateVerificationCode() {
+        int code = new Random().nextInt(900000) + 100000;
+        return String.valueOf(code);
     }
 
     private User requireClientUser(UUID clientId) {

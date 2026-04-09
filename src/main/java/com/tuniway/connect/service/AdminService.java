@@ -50,6 +50,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.TextStyle;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -705,10 +706,12 @@ public class AdminService {
             }
 
             if (item.getLatitude() != null) {
+                validateLatitude(item.getLatitude());
                 existingStop.setLatitude(item.getLatitude());
             }
 
             if (item.getLongitude() != null) {
+                validateLongitude(item.getLongitude());
                 existingStop.setLongitude(item.getLongitude());
             }
 
@@ -720,9 +723,29 @@ public class AdminService {
         newStop.setStopName(stopName);
         newStop.setZone(normalizeToNull(item.getZone()));
         newStop.setActive(item.getActive() != null ? item.getActive() : Boolean.TRUE);
+        validateLatitude(item.getLatitude());
         newStop.setLatitude(item.getLatitude());
+        validateLongitude(item.getLongitude());
         newStop.setLongitude(item.getLongitude());
         return transportStopRepository.save(newStop);
+    }
+
+    private void validateLatitude(BigDecimal latitude) {
+        if (latitude == null) {
+            return;
+        }
+        if (latitude.compareTo(BigDecimal.valueOf(-90)) < 0 || latitude.compareTo(BigDecimal.valueOf(90)) > 0) {
+            throw new IllegalArgumentException("Latitude must be between -90 and 90");
+        }
+    }
+
+    private void validateLongitude(BigDecimal longitude) {
+        if (longitude == null) {
+            return;
+        }
+        if (longitude.compareTo(BigDecimal.valueOf(-180)) < 0 || longitude.compareTo(BigDecimal.valueOf(180)) > 0) {
+            throw new IllegalArgumentException("Longitude must be between -180 and 180");
+        }
     }
 
     private void syncDepartureSlotOrdersToRoute(UUID transportId) {
