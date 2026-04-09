@@ -23,6 +23,7 @@ import com.tuniway.connect.model.entity.TransportType;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.repository.ClientProfileRepository;
 import com.tuniway.connect.repository.EmailVerificationCodeRepository;
+import com.tuniway.connect.repository.TransportCountProjection;
 import com.tuniway.connect.repository.TransportDepartureSlotRepository;
 import com.tuniway.connect.repository.TransportRepository;
 import com.tuniway.connect.repository.TransportRouteStopRepository;
@@ -38,13 +39,17 @@ import org.springframework.stereotype.Service;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class ClientService {
@@ -198,10 +203,16 @@ public class ClientService {
             pageable
         );
 
+        List<UUID> transportIds = transports.getContent().stream().map(Transport::getId).toList();
+        Map<UUID, Long> stopCounts = loadVisibleStopCounts(transportIds);
+        Map<UUID, Long> departureCounts = loadVisibleDepartureCounts(transportIds);
+
         ClientTransportSearchResponse response = new ClientTransportSearchResponse();
         response.setSuccess(true);
         response.setMessage("Client transports retrieved successfully");
-        response.setTransports(transports.getContent().stream().map(transport -> toTransportDto(transport, false)).toList());
+        response.setTransports(transports.getContent().stream()
+            .map(transport -> toTransportDto(transport, false, stopCounts, departureCounts))
+            .toList());
         response.setPage(transports.getNumber());
         response.setSize(transports.getSize());
         response.setTotalItems(transports.getTotalElements());
@@ -243,7 +254,7 @@ public class ClientService {
         }
 
         Transport transport = requireTransport(transportId);
-        String dayOfWeek = date.getDayOfWeek().name();
+        String dayOfWeek = normalizeDisplayDayOfWeek(date.getDayOfWeek().name());
 
         List<ClientTransportDepartureDto> departures = transportDepartureSlotRepository
             .findByTransportIdAndDayOfWeekIgnoreCaseOrderByStopOrderAscDepartureTimeAsc(transportId, dayOfWeek)
@@ -271,8 +282,15 @@ public class ClientService {
             throw new IllegalArgumentException("radiusMeters must be greater than 0");
         }
 
-        List<NearbyCandidate> nearbyCandidates = new ArrayList<>();
-        for (TransportRouteStop routeStop : transportRouteStopRepository.findAllWithTransportAndStop()) {
+        BoundingBox boundingBox = buildBoundingBox(latitude, longitude, resolvedRadiusMeters);
+        Map<UUID, NearbyCandidate> nearbyCandidates = new HashMap<>();
+
+        for (TransportRouteStop routeStop : transportRouteStopRepository.findEligibleNearbyRouteStops(
+            boundingBox.minLatitude(),
+            boundingBox.maxLatitude(),
+            boundingBox.minLongitude(),
+            boundingBox.maxLongitude()
+        )) {
             if (!isEligibleNearbyRouteStop(routeStop)) {
                 continue;
             }
@@ -289,13 +307,11 @@ public class ClientService {
                 continue;
             }
 
-            NearbyCandidate existingCandidate = nearbyCandidates.stream()
-                .filter(candidate -> candidate.transport().getId().equals(routeStop.getTransport().getId()))
-                .findFirst()
-                .orElse(null);
+            UUID transportId = routeStop.getTransport().getId();
+            NearbyCandidate existingCandidate = nearbyCandidates.get(transportId);
 
             if (existingCandidate == null) {
-                nearbyCandidates.add(new NearbyCandidate(routeStop.getTransport(), routeStop, distanceMeters, 1));
+                nearbyCandidates.put(transportId, new NearbyCandidate(routeStop.getTransport(), routeStop, distanceMeters, 1));
                 continue;
             }
 
@@ -306,14 +322,17 @@ public class ClientService {
             }
         }
 
-        List<ClientNearbyTransportsResponse.NearbyTransportDto> transports = nearbyCandidates.stream()
+        Map<UUID, Long> stopCounts = loadVisibleStopCounts(nearbyCandidates.keySet());
+        Map<UUID, Long> departureCounts = loadVisibleDepartureCounts(nearbyCandidates.keySet());
+
+        List<ClientNearbyTransportsResponse.NearbyTransportDto> transports = nearbyCandidates.values().stream()
             .sorted(Comparator
                 .comparingDouble(NearbyCandidate::distanceMeters)
                 .thenComparing(candidate -> candidate.transport().getName(), String.CASE_INSENSITIVE_ORDER))
             .map(candidate -> {
                 ClientNearbyTransportsResponse.NearbyTransportDto dto =
                     new ClientNearbyTransportsResponse.NearbyTransportDto();
-                dto.setTransport(toTransportDto(candidate.transport(), false));
+                dto.setTransport(toTransportDto(candidate.transport(), false, stopCounts, departureCounts));
                 dto.setNearestStop(toTransportStopDto(candidate.nearestStop()));
                 dto.setDistanceMeters(roundDistance(candidate.distanceMeters()));
                 dto.setMatchingStopCount(candidate.matchCount());
@@ -351,6 +370,34 @@ public class ClientService {
     private String generateVerificationCode() {
         int code = new Random().nextInt(900000) + 100000;
         return String.valueOf(code);
+    }
+
+    private Map<UUID, Long> loadVisibleStopCounts(Iterable<UUID> transportIds) {
+        List<UUID> ids = new ArrayList<>();
+        transportIds.forEach(ids::add);
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+
+        return transportRouteStopRepository.countVisibleStopsByTransportIds(ids).stream()
+            .collect(Collectors.toMap(
+                TransportCountProjection::getTransportId,
+                TransportCountProjection::getCount
+            ));
+    }
+
+    private Map<UUID, Long> loadVisibleDepartureCounts(Iterable<UUID> transportIds) {
+        List<UUID> ids = new ArrayList<>();
+        transportIds.forEach(ids::add);
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+
+        return transportDepartureSlotRepository.countVisibleDeparturesByTransportIds(ids).stream()
+            .collect(Collectors.toMap(
+                TransportCountProjection::getTransportId,
+                TransportCountProjection::getCount
+            ));
     }
 
     private User requireClientUser(UUID clientId) {
@@ -472,6 +519,13 @@ public class ClientService {
     }
 
     private ClientTransportDto toTransportDto(Transport transport, boolean includeAvailableDays) {
+        return toTransportDto(transport, includeAvailableDays, null, null);
+    }
+
+    private ClientTransportDto toTransportDto(Transport transport,
+                                               boolean includeAvailableDays,
+                                               Map<UUID, Long> stopCounts,
+                                               Map<UUID, Long> departureCounts) {
         ClientTransportDto dto = new ClientTransportDto();
         dto.setId(transport.getId());
         dto.setCode(transport.getCode());
@@ -483,20 +537,42 @@ public class ClientService {
         dto.setZone(transport.getZone());
         dto.setOperatingZone(transport.getOperating_zone());
         dto.setActive(transport.getActive());
-        dto.setStopCount(transportRouteStopRepository.countByTransportIdAndActiveTrue(transport.getId()));
-        dto.setDepartureCount(transportDepartureSlotRepository.countByTransportIdAndActiveTrue(transport.getId()));
+        dto.setStopCount(resolveStopCount(transport.getId(), stopCounts));
+        dto.setDepartureCount(resolveDepartureCount(transport.getId(), departureCounts));
         if (includeAvailableDays) {
             dto.setAvailableDays(resolveAvailableDays(transport.getId()));
         }
         return dto;
     }
 
+    private long resolveStopCount(UUID transportId, Map<UUID, Long> stopCounts) {
+        if (stopCounts != null && stopCounts.containsKey(transportId)) {
+            return stopCounts.get(transportId);
+        }
+
+        return transportRouteStopRepository.countVisibleStopsByTransportIds(List.of(transportId)).stream()
+            .mapToLong(TransportCountProjection::getCount)
+            .findFirst()
+            .orElse(0L);
+    }
+
+    private long resolveDepartureCount(UUID transportId, Map<UUID, Long> departureCounts) {
+        if (departureCounts != null && departureCounts.containsKey(transportId)) {
+            return departureCounts.get(transportId);
+        }
+
+        return transportDepartureSlotRepository.countVisibleDeparturesByTransportIds(List.of(transportId)).stream()
+            .mapToLong(TransportCountProjection::getCount)
+            .findFirst()
+            .orElse(0L);
+    }
+
     private List<String> resolveAvailableDays(UUID transportId) {
         return transportDepartureSlotRepository.findByTransportIdOrderByStopOrderAscDayOfWeekAscDepartureTimeAsc(transportId).stream()
             .filter(this::isClientVisibleDeparture)
-            .map(slot -> normalizeDayOfWeek(slot.getDayOfWeek()))
+            .map(slot -> normalizeDisplayDayOfWeek(slot.getDayOfWeek()))
             .distinct()
-            .sorted(Comparator.comparingInt(day -> DayOfWeek.valueOf(day).getValue()))
+            .sorted(Comparator.comparingInt(day -> DayOfWeek.valueOf(day.toUpperCase(Locale.ENGLISH)).getValue()))
             .toList();
     }
 
@@ -544,6 +620,19 @@ public class ClientService {
             && !Boolean.FALSE.equals(routeStop.getTransport().getActive())
             && routeStop.getStop().getLatitude() != null
             && routeStop.getStop().getLongitude() != null;
+    }
+
+    private BoundingBox buildBoundingBox(double latitude, double longitude, int radiusMeters) {
+        double latitudeDelta = radiusMeters / 111_320d;
+        double longitudeScale = Math.max(Math.cos(Math.toRadians(latitude)), 0.000001d);
+        double longitudeDelta = radiusMeters / (111_320d * longitudeScale);
+
+        return new BoundingBox(
+            latitude - latitudeDelta,
+            latitude + latitudeDelta,
+            longitude - longitudeDelta,
+            longitude + longitudeDelta
+        );
     }
 
     private void validateCoordinates(double latitude, double longitude) {
@@ -619,6 +708,14 @@ public class ClientService {
         return DayOfWeek.valueOf(normalized.toUpperCase(Locale.ENGLISH)).name();
     }
 
+    private String normalizeDisplayDayOfWeek(String dayOfWeek) {
+        String normalized = normalizeToNull(dayOfWeek);
+        if (normalized == null) {
+            throw new IllegalArgumentException("Day of week is required");
+        }
+        return DayOfWeek.valueOf(normalized.toUpperCase(Locale.ENGLISH)).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+    }
+
     private String normalizeToLowerCase(String value) {
         String normalized = normalizeToNull(value);
         return normalized == null ? null : normalized.toLowerCase(Locale.ENGLISH);
@@ -673,5 +770,8 @@ public class ClientService {
         public void incrementMatchCount() {
             this.matchCount++;
         }
+    }
+
+    private record BoundingBox(double minLatitude, double maxLatitude, double minLongitude, double maxLongitude) {
     }
 }

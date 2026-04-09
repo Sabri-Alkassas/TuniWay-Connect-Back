@@ -1,11 +1,14 @@
 package com.tuniway.connect.model.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import java.time.LocalTime;
 
 public class ClientTransportDepartureDto {
     private String stopId;
     private String stopName;
     private Integer stopOrder;
+    @JsonFormat(pattern = "HH:mm[:ss]")
     private LocalTime departureTime;
     private Boolean active;
 
