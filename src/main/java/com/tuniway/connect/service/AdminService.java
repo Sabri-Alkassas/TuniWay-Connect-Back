@@ -704,6 +704,14 @@ public class AdminService {
                 existingStop.setActive(item.getActive());
             }
 
+            if (item.getLatitude() != null) {
+                existingStop.setLatitude(item.getLatitude());
+            }
+
+            if (item.getLongitude() != null) {
+                existingStop.setLongitude(item.getLongitude());
+            }
+
             return transportStopRepository.save(existingStop);
         }
 
@@ -712,6 +720,8 @@ public class AdminService {
         newStop.setStopName(stopName);
         newStop.setZone(normalizeToNull(item.getZone()));
         newStop.setActive(item.getActive() != null ? item.getActive() : Boolean.TRUE);
+        newStop.setLatitude(item.getLatitude());
+        newStop.setLongitude(item.getLongitude());
         return transportStopRepository.save(newStop);
     }
 
