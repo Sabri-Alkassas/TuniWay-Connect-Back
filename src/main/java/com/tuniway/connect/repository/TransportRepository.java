@@ -11,4 +11,5 @@ import com.tuniway.connect.model.entity.Transport;
 @Repository
 public interface TransportRepository extends JpaRepository<Transport, UUID> {
     Optional<Transport> findByCode(String code);
+    long countByActiveTrue();
 }

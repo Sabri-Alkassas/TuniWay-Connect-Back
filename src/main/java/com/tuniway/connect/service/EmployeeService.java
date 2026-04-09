@@ -7,6 +7,7 @@ import com.tuniway.connect.model.dto.ShiftEndResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
 import com.tuniway.connect.model.entity.ShiftStopEvent;
+import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.model.entity.WorkShift;
 import com.tuniway.connect.repository.ShiftStopEventRepository;
@@ -53,8 +54,7 @@ public class EmployeeService {
         List<WorkShift> shifts = workShiftRepository.findByEmployeeIdOrderByScheduleStartAsc(employeeId);
 
         List<EmployeeScheduleResponse.ShiftDto> shiftDtos = shifts.stream()
-                .map(shift -> new EmployeeScheduleResponse.ShiftDto(
-                ))
+                .map(this::toScheduleShiftDto)
                 .collect(Collectors.toList());
 
         EmployeeScheduleResponse response = new EmployeeScheduleResponse();
@@ -266,6 +266,24 @@ public class EmployeeService {
         response.setActualStart(shift.getActualStart());
         return response;
     }
+
+    private EmployeeScheduleResponse.ShiftDto toScheduleShiftDto(WorkShift shift) {
+        Transport transport = shift.getTransport();
+
+        return new EmployeeScheduleResponse.ShiftDto(
+                shift.getId().toString(),
+                transport != null && transport.getId() != null ? transport.getId().toString() : null,
+                transport != null ? transport.getName() : null,
+                transport != null && transport.getType() != null ? transport.getType().name() : null,
+                transport != null ? transport.getZone() : null,
+                shift.getScheduleStart(),
+                shift.getScheduleEnd(),
+                normalizeShiftStatus(shift.getStatus()).toLowerCase(),
+                shift.getActualStart(),
+                shift.getActualEnd()
+        );
+    }
+
     public EmployeeShiftProgressResponse getShiftProgress(UUID employeeId, UUID shiftId) {
         WorkShift shift = requireOwnedShift(employeeId, shiftId);
         List<ShiftStopEvent> events = shiftStopEventRepository.findByWorkShiftIdOrderByStopOrderAsc(shift.getId());

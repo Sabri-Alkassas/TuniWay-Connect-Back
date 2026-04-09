@@ -13,6 +13,12 @@ public class AdminProfile {
     @Id
     private UUID userId;
 
+    @Column(name = "admin_code", unique = true)
+    private String adminCode;
+
+    @Column(name = "full_name")
+    private String fullName;
+
     @Column(name = "two_factor_enabled")
     private Boolean twoFactorEnabled;
 
@@ -28,6 +34,22 @@ public class AdminProfile {
 
     public void setUserId(UUID userId) {
         this.userId = userId;
+    }
+
+    public String getAdminCode() {
+        return adminCode;
+    }
+
+    public void setAdminCode(String adminCode) {
+        this.adminCode = adminCode;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
     }
 
     public Boolean getTwoFactorEnabled() {

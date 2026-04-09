@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tuniway.connect.model.entity.TransportType;
 
+import java.util.List;
+
 public class CreateTransportRequest {
     private String code;
     private String name;
@@ -16,6 +18,8 @@ public class CreateTransportRequest {
     private String operating_zone;
     private String zone;
     private Boolean is_active;
+    private List<TransportStopItem> stops;
+    private List<TransportDepartureItem> departures;
 
     public String getCode() {
         return code;
@@ -87,5 +91,21 @@ public class CreateTransportRequest {
 
     public void setTransportType(TransportType transportType) {
         this.transportType = transportType;
+    }
+
+    public List<TransportStopItem> getStops() {
+        return stops;
+    }
+
+    public void setStops(List<TransportStopItem> stops) {
+        this.stops = stops;
+    }
+
+    public List<TransportDepartureItem> getDepartures() {
+        return departures;
+    }
+
+    public void setDepartures(List<TransportDepartureItem> departures) {
+        this.departures = departures;
     }
 }
