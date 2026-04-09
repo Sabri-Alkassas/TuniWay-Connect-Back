@@ -13,5 +13,11 @@ public interface TransportDepartureSlotRepository extends JpaRepository<Transpor
     @EntityGraph(attributePaths = {"stop"})
     List<TransportDepartureSlot> findByTransportIdOrderByStopOrderAscDayOfWeekAscDepartureTimeAsc(UUID transportId);
 
+    @EntityGraph(attributePaths = {"stop"})
+    List<TransportDepartureSlot> findByTransportIdAndDayOfWeekIgnoreCaseOrderByStopOrderAscDepartureTimeAsc(UUID transportId,
+                                                                                                             String dayOfWeek);
+
+    long countByTransportIdAndActiveTrue(UUID transportId);
+
     void deleteByTransportId(UUID transportId);
 }
