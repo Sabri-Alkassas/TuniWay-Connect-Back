@@ -1,5 +1,6 @@
 package com.tuniway.connect.model.dto;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 public class TransportStopItem {
@@ -7,6 +8,8 @@ public class TransportStopItem {
     private String stopName;
     private String zone;
     private Boolean active;
+    private BigDecimal latitude;
+    private BigDecimal longitude;
     private Integer stopOrder;
 
     public UUID getStopId() {
@@ -39,6 +42,22 @@ public class TransportStopItem {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+    public BigDecimal getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(BigDecimal latitude) {
+        this.latitude = latitude;
+    }
+
+    public BigDecimal getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(BigDecimal longitude) {
+        this.longitude = longitude;
     }
 
     public Integer getStopOrder() {
