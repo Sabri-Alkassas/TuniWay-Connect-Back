@@ -4,7 +4,7 @@ CREATE TABLE ticket_products (
     description TEXT,
     price DECIMAL(10, 2) NOT NULL,
     valid_duration_minutes INT NOT NULL,
-    active BOOLEAN DEFAULT TRUE
+    active BOOLEAN DEFAULT TRUE,
 
     CONSTRAINT price_positive CHECK (price >= 0),
     CONSTRAINT duration_positive CHECK (valid_duration_minutes > 0)
@@ -43,7 +43,7 @@ CREATE TABLE payment_transactions (
     CONSTRAINT fk_purchase
         FOREIGN KEY (ticket_purchase_id)
         REFERENCES ticket_purchases(id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
 
     CONSTRAINT processed_at_not_future CHECK (processed_at <= NOW()),
     CONSTRAINT amount_positive CHECK (amount >= 0)
