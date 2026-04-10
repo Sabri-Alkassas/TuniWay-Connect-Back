@@ -3,6 +3,12 @@ package com.tuniway.connect.service;
 import com.tuniway.connect.model.dto.ClientAccountResponse;
 import com.tuniway.connect.model.dto.ClientDashboardResponse;
 import com.tuniway.connect.model.dto.ClientNearbyTransportsResponse;
+import com.tuniway.connect.model.dto.ClientTicketDto;
+import com.tuniway.connect.model.dto.ClientTicketHistoryResponse;
+import com.tuniway.connect.model.dto.ClientTicketPaymentDto;
+import com.tuniway.connect.model.dto.ClientTicketProductDto;
+import com.tuniway.connect.model.dto.ClientTicketProductsResponse;
+import com.tuniway.connect.model.dto.ClientTicketPurchaseResponse;
 import com.tuniway.connect.model.dto.ClientTransportDepartureDto;
 import com.tuniway.connect.model.dto.ClientTransportDeparturesResponse;
 import com.tuniway.connect.model.dto.ClientTransportDetailsResponse;
@@ -10,11 +16,15 @@ import com.tuniway.connect.model.dto.ClientTransportDto;
 import com.tuniway.connect.model.dto.ClientTransportSearchResponse;
 import com.tuniway.connect.model.dto.ClientTransportStopDto;
 import com.tuniway.connect.model.dto.ClientTransportStopsResponse;
+import com.tuniway.connect.model.dto.PurchaseClientTicketRequest;
 import com.tuniway.connect.model.dto.UpdateClientAccountRequest;
 import com.tuniway.connect.model.entity.AccountStatus;
 import com.tuniway.connect.model.entity.ClientProfile;
 import com.tuniway.connect.model.entity.EmailVerificationCode;
+import com.tuniway.connect.model.entity.PaymentTransaction;
 import com.tuniway.connect.model.entity.Role;
+import com.tuniway.connect.model.entity.TicketProduct;
+import com.tuniway.connect.model.entity.TicketPurchase;
 import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.model.entity.TransportDepartureSlot;
 import com.tuniway.connect.model.entity.TransportRouteStop;
@@ -23,6 +33,9 @@ import com.tuniway.connect.model.entity.TransportType;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.repository.ClientProfileRepository;
 import com.tuniway.connect.repository.EmailVerificationCodeRepository;
+import com.tuniway.connect.repository.PaymentTransactionRepository;
+import com.tuniway.connect.repository.TicketProductRepository;
+import com.tuniway.connect.repository.TicketPurchaseRepository;
 import com.tuniway.connect.repository.TransportCountProjection;
 import com.tuniway.connect.repository.TransportDepartureSlotRepository;
 import com.tuniway.connect.repository.TransportRepository;
@@ -36,6 +49,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -66,6 +81,9 @@ public class ClientService {
     private final TransportRepository transportRepository;
     private final TransportRouteStopRepository transportRouteStopRepository;
     private final TransportDepartureSlotRepository transportDepartureSlotRepository;
+    private final TicketProductRepository ticketProductRepository;
+    private final TicketPurchaseRepository ticketPurchaseRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
 
     public ClientService(
         UserRepository userRepository,
@@ -74,7 +92,10 @@ public class ClientService {
         EmailService emailService,
         TransportRepository transportRepository,
         TransportRouteStopRepository transportRouteStopRepository,
-        TransportDepartureSlotRepository transportDepartureSlotRepository
+        TransportDepartureSlotRepository transportDepartureSlotRepository,
+        TicketProductRepository ticketProductRepository,
+        TicketPurchaseRepository ticketPurchaseRepository,
+        PaymentTransactionRepository paymentTransactionRepository
     ) {
         this.userRepository = userRepository;
         this.clientProfileRepository = clientProfileRepository;
@@ -83,6 +104,9 @@ public class ClientService {
         this.transportRepository = transportRepository;
         this.transportRouteStopRepository = transportRouteStopRepository;
         this.transportDepartureSlotRepository = transportDepartureSlotRepository;
+        this.ticketProductRepository = ticketProductRepository;
+        this.ticketPurchaseRepository = ticketPurchaseRepository;
+        this.paymentTransactionRepository = paymentTransactionRepository;
     }
 
     public ClientDashboardResponse getDashboard(UUID clientId) {
@@ -271,6 +295,122 @@ public class ClientService {
         response.setDate(date);
         response.setDayOfWeek(dayOfWeek);
         response.setDepartures(departures);
+        return response;
+    }
+
+    public ClientTicketProductsResponse getTicketProducts(UUID clientId,
+                                                          UUID transportId,
+                                                          UUID fromStopId,
+                                                          UUID toStopId) {
+        requireClientUser(clientId);
+
+        RouteContext routeContext = tryResolveRouteContextForProducts(transportId, fromStopId, toStopId);
+        if (routeContext == null) {
+            ClientTicketProductsResponse response = new ClientTicketProductsResponse();
+            response.setSuccess(true);
+            response.setMessage("No eligible ticket products for the selected route segment");
+            response.setProducts(List.of());
+            return response;
+        }
+
+        List<ClientTicketProductDto> products = ticketProductRepository
+            .findByActiveTrueOrderByPriceAscValidDurationMinutesAscNameAsc()
+            .stream()
+            .map(product -> toTicketProductDto(product, routeContext))
+            .toList();
+
+        if (products.isEmpty()) {
+            throw new IllegalArgumentException("No active ticket products available");
+        }
+
+        ClientTicketProductsResponse response = new ClientTicketProductsResponse();
+        response.setSuccess(true);
+        response.setMessage("Ticket products retrieved successfully");
+        response.setProducts(products);
+        return response;
+    }
+
+    private RouteContext tryResolveRouteContextForProducts(UUID transportId, UUID fromStopId, UUID toStopId) {
+        try {
+            return resolveRouteContext(transportId, fromStopId, toStopId);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    @Transactional
+    public ClientTicketPurchaseResponse purchaseTicket(UUID clientId, PurchaseClientTicketRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request body is required");
+        }
+
+        requireClientUser(clientId);
+
+        RouteContext routeContext = resolveRouteContext(
+            request.getTransportId(),
+            request.getFromStopId(),
+            request.getToStopId()
+        );
+
+        TicketProduct product = resolveTicketProduct(request.getProductId());
+        Instant purchaseTime = Instant.now();
+
+        TicketPurchase purchase = new TicketPurchase();
+        purchase.setUserId(clientId);
+        purchase.setProduct(product);
+        purchase.setTransport(routeContext.transport());
+        purchase.setFromStop(routeContext.fromStop());
+        purchase.setToStop(routeContext.toStop());
+        purchase.setStopCount(routeContext.stopCount());
+        purchase.setStatus("ACTIVE");
+        purchase.setPurchaseTime(purchaseTime);
+        purchase.setValidUntil(purchaseTime.plus(product.getValidDurationMinutes(), ChronoUnit.MINUTES));
+        TicketPurchase savedPurchase = ticketPurchaseRepository.save(purchase);
+
+        PaymentTransaction payment = new PaymentTransaction();
+        payment.setTicketPurchase(savedPurchase);
+        payment.setProvider(resolveRequiredOrDefault(request.getProvider(), "MANUAL"));
+        payment.setProviderReference(resolveRequiredOrDefault(request.getProviderReference(), "MANUAL-" + savedPurchase.getId()));
+        payment.setPaymentMethod(resolveRequiredOrDefault(request.getPaymentMethod(), "CASH"));
+        payment.setProcessedAt(purchaseTime);
+        payment.setAmount(calculateRouteFare(routeContext.transport().getType(), routeContext.stopCount()));
+        payment.setStatus("completed");
+        PaymentTransaction savedPayment = paymentTransactionRepository.save(payment);
+
+        ClientTicketPurchaseResponse response = new ClientTicketPurchaseResponse();
+        response.setSuccess(true);
+        response.setMessage("Ticket purchased successfully");
+        response.setTicket(toTicketDto(savedPurchase, savedPayment));
+        return response;
+    }
+
+    public ClientTicketHistoryResponse getTicketHistory(UUID clientId, int page, int size, String sort) {
+        requireClientUser(clientId);
+
+        Pageable pageable = buildTicketPageable(page, size, sort);
+        Page<TicketPurchase> purchases = ticketPurchaseRepository.findByUserId(clientId, pageable);
+
+        List<UUID> purchaseIds = purchases.getContent().stream().map(TicketPurchase::getId).toList();
+        Map<UUID, PaymentTransaction> latestPayments = paymentTransactionRepository
+            .findByTicketPurchaseIdInOrderByProcessedAtDesc(purchaseIds)
+            .stream()
+            .collect(Collectors.toMap(
+                payment -> payment.getTicketPurchase().getId(),
+                payment -> payment,
+                (left, right) -> left
+            ));
+
+        ClientTicketHistoryResponse response = new ClientTicketHistoryResponse();
+        response.setSuccess(true);
+        response.setMessage("Ticket history retrieved successfully");
+        response.setTickets(purchases.getContent().stream()
+            .map(purchase -> toTicketDto(purchase, latestPayments.get(purchase.getId())))
+            .toList());
+        response.setPage(purchases.getNumber());
+        response.setSize(purchases.getSize());
+        response.setTotalItems(purchases.getTotalElements());
+        response.setTotalPages(purchases.getTotalPages());
+        response.setSort(normalizeTicketSortExpression(sort));
         return response;
     }
 
@@ -567,6 +707,197 @@ public class ClientService {
             .orElse(0L);
     }
 
+    private RouteContext resolveRouteContext(UUID transportId, UUID fromStopId, UUID toStopId) {
+        if (transportId == null) {
+            throw new IllegalArgumentException("transportId is required");
+        }
+        if (fromStopId == null) {
+            throw new IllegalArgumentException("fromStopId is required");
+        }
+        if (toStopId == null) {
+            throw new IllegalArgumentException("toStopId is required");
+        }
+        if (fromStopId.equals(toStopId)) {
+            throw new IllegalArgumentException("fromStopId and toStopId must be different");
+        }
+
+        Transport transport = requireTransport(transportId);
+        if (Boolean.FALSE.equals(transport.getActive())) {
+            throw new IllegalArgumentException("Transport is inactive");
+        }
+
+        Map<UUID, TransportRouteStop> routeStopsById = transportRouteStopRepository
+            .findByTransportIdOrderByStopOrderAsc(transportId)
+            .stream()
+            .filter(this::isClientVisibleRouteStop)
+            .collect(Collectors.toMap(routeStop -> routeStop.getStop().getId(), routeStop -> routeStop));
+
+        TransportRouteStop fromRouteStop = routeStopsById.get(fromStopId);
+        TransportRouteStop toRouteStop = routeStopsById.get(toStopId);
+
+        if (fromRouteStop == null) {
+            throw new IllegalArgumentException("fromStopId does not belong to the selected transport route");
+        }
+        if (toRouteStop == null) {
+            throw new IllegalArgumentException("toStopId does not belong to the selected transport route");
+        }
+        if (toRouteStop.getStopOrder() <= fromRouteStop.getStopOrder()) {
+            throw new IllegalArgumentException("toStopId must be after fromStopId in the route order");
+        }
+
+        return new RouteContext(
+            transport,
+            fromRouteStop.getStop(),
+            toRouteStop.getStop(),
+            toRouteStop.getStopOrder() - fromRouteStop.getStopOrder()
+        );
+    }
+
+    private TicketProduct resolveTicketProduct(UUID productId) {
+        if (productId != null) {
+            return ticketProductRepository.findByIdAndActiveTrue(productId)
+                .orElseThrow(() -> new IllegalArgumentException("Ticket product not found or inactive"));
+        }
+
+        return ticketProductRepository.findByActiveTrueOrderByPriceAscValidDurationMinutesAscNameAsc().stream()
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("No active ticket products available"));
+    }
+
+    private BigDecimal calculateRouteFare(TransportType transportType, int stopCount) {
+        if (transportType == null) {
+            throw new IllegalArgumentException("Transport type is required to calculate fare");
+        }
+
+        BigDecimal baseFare;
+        BigDecimal perStopFare;
+        switch (transportType) {
+            case BUS -> {
+                baseFare = new BigDecimal("0.80");
+                perStopFare = new BigDecimal("0.25");
+            }
+            case METRO -> {
+                baseFare = new BigDecimal("0.70");
+                perStopFare = new BigDecimal("0.20");
+            }
+            case TRAIN -> {
+                baseFare = new BigDecimal("1.00");
+                perStopFare = new BigDecimal("0.35");
+            }
+            default -> throw new IllegalArgumentException("Unsupported transport type");
+        }
+
+        return baseFare
+            .add(perStopFare.multiply(BigDecimal.valueOf(Math.max(stopCount, 1))))
+            .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private ClientTicketProductDto toTicketProductDto(TicketProduct product, RouteContext routeContext) {
+        ClientTicketProductDto dto = new ClientTicketProductDto();
+        dto.setId(product.getId());
+        dto.setName(product.getName());
+        dto.setDescription(product.getDescription());
+        dto.setPrice(calculateRouteFare(routeContext.transport().getType(), routeContext.stopCount()));
+        dto.setValidDurationMinutes(product.getValidDurationMinutes());
+        dto.setActive(product.getActive());
+        dto.setTransportId(routeContext.transport().getId());
+        dto.setFromStopId(routeContext.fromStop().getId());
+        dto.setToStopId(routeContext.toStop().getId());
+        dto.setStopCount(routeContext.stopCount());
+        return dto;
+    }
+
+    private ClientTicketDto toTicketDto(TicketPurchase purchase, PaymentTransaction payment) {
+        ClientTicketDto dto = new ClientTicketDto();
+        dto.setTicketId(purchase.getId());
+        dto.setProductId(purchase.getProduct() != null ? purchase.getProduct().getId() : null);
+        dto.setProductName(purchase.getProduct() != null ? purchase.getProduct().getName() : null);
+        dto.setProductDescription(purchase.getProduct() != null ? purchase.getProduct().getDescription() : null);
+        dto.setValidDurationMinutes(purchase.getProduct() != null ? purchase.getProduct().getValidDurationMinutes() : null);
+        dto.setTransportId(purchase.getTransport() != null ? purchase.getTransport().getId() : null);
+        dto.setTransportCode(purchase.getTransport() != null ? purchase.getTransport().getCode() : null);
+        dto.setTransportName(purchase.getTransport() != null ? purchase.getTransport().getName() : null);
+        dto.setTransportType(purchase.getTransport() != null && purchase.getTransport().getType() != null
+            ? purchase.getTransport().getType().name()
+            : null);
+        dto.setFromStopId(purchase.getFromStop() != null ? purchase.getFromStop().getId() : null);
+        dto.setFromStopName(purchase.getFromStop() != null ? purchase.getFromStop().getStopName() : null);
+        dto.setToStopId(purchase.getToStop() != null ? purchase.getToStop().getId() : null);
+        dto.setToStopName(purchase.getToStop() != null ? purchase.getToStop().getStopName() : null);
+        dto.setStopCount(purchase.getStopCount());
+        dto.setStatus(purchase.getStatus());
+        dto.setValidUntil(purchase.getValidUntil());
+        dto.setPurchaseTime(purchase.getPurchaseTime());
+
+        if (payment != null) {
+            ClientTicketPaymentDto paymentDto = new ClientTicketPaymentDto();
+            paymentDto.setPaymentId(payment.getId());
+            paymentDto.setProvider(payment.getProvider());
+            paymentDto.setProviderReference(payment.getProviderReference());
+            paymentDto.setPaymentMethod(payment.getPaymentMethod());
+            paymentDto.setProcessedAt(payment.getProcessedAt());
+            paymentDto.setAmount(payment.getAmount());
+            paymentDto.setStatus(payment.getStatus());
+            dto.setPayment(paymentDto);
+            dto.setPrice(payment.getAmount());
+        }
+
+        return dto;
+    }
+
+    private Pageable buildTicketPageable(int page, int size, String sortExpression) {
+        if (page < 0) {
+            throw new IllegalArgumentException("page must be greater than or equal to 0");
+        }
+
+        int resolvedSize = size <= 0 ? DEFAULT_PAGE_SIZE : size;
+        if (resolvedSize > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("size must be less than or equal to " + MAX_PAGE_SIZE);
+        }
+
+        String normalizedSort = normalizeTicketSortExpression(sortExpression);
+        String[] parts = normalizedSort.split(",", 2);
+        String property = mapTicketSortProperty(parts[0]);
+        Sort.Direction direction = parseSortDirection(parts[1]);
+        return PageRequest.of(page, resolvedSize, Sort.by(direction, property));
+    }
+
+    private String normalizeTicketSortExpression(String sortExpression) {
+        String normalized = normalizeToNull(sortExpression);
+        if (normalized == null) {
+            return "purchaseTime,desc";
+        }
+
+        String[] parts = normalized.split(",", 2);
+        String field = normalizeToNull(parts[0]);
+        if (field == null) {
+            throw new IllegalArgumentException("sort field is required");
+        }
+
+        String direction = parts.length > 1 ? normalizeToNull(parts[1]) : "desc";
+        if (direction == null) {
+            direction = "desc";
+        }
+
+        mapTicketSortProperty(field);
+        parseSortDirection(direction);
+        return field + "," + direction.toLowerCase(Locale.ENGLISH);
+    }
+
+    private String mapTicketSortProperty(String sortField) {
+        return switch (sortField.trim().toLowerCase(Locale.ENGLISH)) {
+            case "purchasetime", "purchase_time" -> "purchaseTime";
+            case "validuntil", "valid_until" -> "validUntil";
+            case "status" -> "status";
+            default -> throw new IllegalArgumentException("Unsupported sort field: " + sortField);
+        };
+    }
+
+    private String resolveRequiredOrDefault(String value, String defaultValue) {
+        String normalized = normalizeToNull(value);
+        return normalized != null ? normalized : defaultValue;
+    }
+
     private List<String> resolveAvailableDays(UUID transportId) {
         return transportDepartureSlotRepository.findByTransportIdOrderByStopOrderAscDayOfWeekAscDepartureTimeAsc(transportId).stream()
             .filter(this::isClientVisibleDeparture)
@@ -773,5 +1104,8 @@ public class ClientService {
     }
 
     private record BoundingBox(double minLatitude, double maxLatitude, double minLongitude, double maxLongitude) {
+    }
+
+    private record RouteContext(Transport transport, TransportStop fromStop, TransportStop toStop, int stopCount) {
     }
 }
