@@ -44,6 +44,9 @@ public class Transport {
     @Column(nullable = false)
     private Boolean active;
 
+    @Column(nullable = false)
+    private Integer capacity = 100;
+
     public Transport() {
     }
 
@@ -137,5 +140,13 @@ public class Transport {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+    public Integer getCapacity() {
+        return capacity;
+    }
+
+    public void setCapacity(Integer capacity) {
+        this.capacity = capacity;
     }
 }

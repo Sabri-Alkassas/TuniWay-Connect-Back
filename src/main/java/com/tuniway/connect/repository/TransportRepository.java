@@ -2,6 +2,8 @@ package com.tuniway.connect.repository;
 
 import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.model.entity.TransportType;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,6 +18,10 @@ import java.util.UUID;
 public interface TransportRepository extends JpaRepository<Transport, UUID> {
     Optional<Transport> findByCode(String code);
     long countByActiveTrue();
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from Transport t where t.id = :transportId")
+    Optional<Transport> findByIdForUpdate(@Param("transportId") UUID transportId);
 
     @Query("""
         select t from Transport t

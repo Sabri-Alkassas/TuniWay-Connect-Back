@@ -3,10 +3,14 @@ package com.tuniway.connect.controller;
 import com.tuniway.connect.model.dto.ClientAccountResponse;
 import com.tuniway.connect.model.dto.ClientDashboardResponse;
 import com.tuniway.connect.model.dto.ClientNearbyTransportsResponse;
+import com.tuniway.connect.model.dto.ClientTicketHistoryResponse;
+import com.tuniway.connect.model.dto.ClientTicketProductsResponse;
+import com.tuniway.connect.model.dto.ClientTicketPurchaseResponse;
 import com.tuniway.connect.model.dto.ClientTransportDeparturesResponse;
 import com.tuniway.connect.model.dto.ClientTransportDetailsResponse;
 import com.tuniway.connect.model.dto.ClientTransportSearchResponse;
 import com.tuniway.connect.model.dto.ClientTransportStopsResponse;
+import com.tuniway.connect.model.dto.PurchaseClientTicketRequest;
 import com.tuniway.connect.model.dto.UpdateClientAccountRequest;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.repository.UserRepository;
@@ -18,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -77,6 +82,63 @@ public class ClientController {
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {
             ClientAccountResponse errorResponse = new ClientAccountResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PreAuthorize("hasRole('CLIENT')")
+    @GetMapping("/tickets/products")
+    public ResponseEntity<ClientTicketProductsResponse> getTicketProducts(@RequestParam UUID transportId,
+                                                                          @RequestParam UUID fromStopId,
+                                                                          @RequestParam UUID toStopId,
+                                                                          Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            ClientTicketProductsResponse response = clientService.getTicketProducts(
+                user.getId(),
+                transportId,
+                fromStopId,
+                toStopId
+            );
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            ClientTicketProductsResponse errorResponse = new ClientTicketProductsResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PreAuthorize("hasRole('CLIENT')")
+    @PostMapping("/tickets/purchase")
+    public ResponseEntity<ClientTicketPurchaseResponse> purchaseTicket(@RequestBody PurchaseClientTicketRequest request,
+                                                                       Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            ClientTicketPurchaseResponse response = clientService.purchaseTicket(user.getId(), request);
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (RuntimeException e) {
+            ClientTicketPurchaseResponse errorResponse = new ClientTicketPurchaseResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PreAuthorize("hasRole('CLIENT')")
+    @GetMapping("/tickets/history")
+    public ResponseEntity<ClientTicketHistoryResponse> getTicketHistory(@RequestParam(defaultValue = "0") int page,
+                                                                        @RequestParam(defaultValue = "20") int size,
+                                                                        @RequestParam(defaultValue = "purchaseTime,desc") String sort,
+                                                                        Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            ClientTicketHistoryResponse response = clientService.getTicketHistory(user.getId(), page, size, sort);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            ClientTicketHistoryResponse errorResponse = new ClientTicketHistoryResponse();
             errorResponse.setSuccess(false);
             errorResponse.setMessage(e.getMessage());
             return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
