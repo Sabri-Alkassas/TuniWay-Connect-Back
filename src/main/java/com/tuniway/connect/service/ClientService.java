@@ -75,6 +75,10 @@ public class ClientService {
     private static final int DEFAULT_RADIUS_METERS = 500;
     private static final int MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES = 5;
     private static final String DEFAULT_SORT = "name,asc";
+    private static final String WORK_SHIFT_STATUS_IN_PROGRESS = "IN_PROGRESS";
+    private static final String STOP_EVENT_STATUS_DEPARTED = "departed";
+    private static final String TICKET_STATUS_ACTIVE = "ACTIVE";
+    private static final String PAYMENT_STATUS_COMPLETED = "COMPLETED";
     private static final double EARTH_RADIUS_METERS = 6_371_000d;
 
     private final UserRepository userRepository;
@@ -339,9 +343,9 @@ public class ClientService {
     private RouteContext tryResolveRouteContextForProducts(UUID transportId, UUID fromStopId, UUID toStopId) {
         try {
             RouteContext routeContext = resolveRouteContext(transportId, fromStopId, toStopId);
-            validateDepartureEligibility(routeContext, LocalTime.now());
+            validateDepartureEligibility(routeContext, null);
             return routeContext;
-        } catch (IllegalArgumentException ex) {
+        } catch (TicketEligibilityException ex) {
             return null;
         }
     }
@@ -360,7 +364,22 @@ public class ClientService {
             request.getToStopId()
         );
 
-        validateDepartureEligibility(routeContext, request.getPlannedDepartureTime());
+        Transport lockedTransport = transportRepository.findByIdForUpdate(routeContext.transport().getId())
+            .orElseThrow(() -> new IllegalArgumentException("Transport not found"));
+        if (Boolean.FALSE.equals(lockedTransport.getActive())) {
+            throw new IllegalArgumentException("Transport is inactive");
+        }
+
+        RouteContext lockedRouteContext = new RouteContext(
+            lockedTransport,
+            routeContext.fromStop(),
+            routeContext.toStop(),
+            routeContext.fromStopOrder(),
+            routeContext.toStopOrder(),
+            routeContext.stopCount()
+        );
+
+        validateDepartureEligibility(lockedRouteContext, request.getPlannedDepartureTime());
 
         TicketProduct product = resolveTicketProduct(request.getProductId());
         Instant purchaseTime = Instant.now();
@@ -368,11 +387,11 @@ public class ClientService {
         TicketPurchase purchase = new TicketPurchase();
         purchase.setUserId(clientId);
         purchase.setProduct(product);
-        purchase.setTransport(routeContext.transport());
-        purchase.setFromStop(routeContext.fromStop());
-        purchase.setToStop(routeContext.toStop());
-        purchase.setStopCount(routeContext.stopCount());
-        purchase.setStatus("ACTIVE");
+        purchase.setTransport(lockedRouteContext.transport());
+        purchase.setFromStop(lockedRouteContext.fromStop());
+        purchase.setToStop(lockedRouteContext.toStop());
+        purchase.setStopCount(lockedRouteContext.stopCount());
+        purchase.setStatus(TICKET_STATUS_ACTIVE);
         purchase.setPurchaseTime(purchaseTime);
         purchase.setValidUntil(purchaseTime.plus(product.getValidDurationMinutes(), ChronoUnit.MINUTES));
         TicketPurchase savedPurchase = ticketPurchaseRepository.save(purchase);
@@ -383,8 +402,8 @@ public class ClientService {
         payment.setProviderReference(resolveRequiredOrDefault(request.getProviderReference(), "MANUAL-" + savedPurchase.getId()));
         payment.setPaymentMethod(resolveRequiredOrDefault(request.getPaymentMethod(), "CASH"));
         payment.setProcessedAt(purchaseTime);
-        payment.setAmount(calculateRouteFare(routeContext.transport().getType(), routeContext.stopCount()));
-        payment.setStatus("completed");
+        payment.setAmount(calculateRouteFare(lockedRouteContext.transport().getType(), lockedRouteContext.stopCount()));
+        payment.setStatus(PAYMENT_STATUS_COMPLETED);
         PaymentTransaction savedPayment = paymentTransactionRepository.save(payment);
 
         ClientTicketPurchaseResponse response = new ClientTicketPurchaseResponse();
@@ -401,14 +420,19 @@ public class ClientService {
         Page<TicketPurchase> purchases = ticketPurchaseRepository.findByUserId(clientId, pageable);
 
         List<UUID> purchaseIds = purchases.getContent().stream().map(TicketPurchase::getId).toList();
-        Map<UUID, PaymentTransaction> latestPayments = paymentTransactionRepository
-            .findByTicketPurchaseIdInOrderByProcessedAtDesc(purchaseIds)
-            .stream()
-            .collect(Collectors.toMap(
-                payment -> payment.getTicketPurchase().getId(),
-                payment -> payment,
-                (left, right) -> left
-            ));
+        Map<UUID, PaymentTransaction> latestPayments;
+        if (purchaseIds.isEmpty()) {
+            latestPayments = Map.of();
+        } else {
+            latestPayments = paymentTransactionRepository
+                .findByTicketPurchaseIdInOrderByProcessedAtDesc(purchaseIds)
+                .stream()
+                .collect(Collectors.toMap(
+                    payment -> payment.getTicketPurchase().getId(),
+                    payment -> payment,
+                    (left, right) -> left
+                ));
+        }
 
         ClientTicketHistoryResponse response = new ClientTicketHistoryResponse();
         response.setSuccess(true);
@@ -770,11 +794,11 @@ public class ClientService {
 
         if (shiftStopEventRepository.existsByWorkShiftTransportIdAndWorkShiftStatusIgnoreCaseAndStopIdAndStatusIgnoreCase(
             routeContext.transport().getId(),
-            "IN_PROGRESS",
+            WORK_SHIFT_STATUS_IN_PROGRESS,
             routeContext.fromStop().getId(),
-            "departed"
+            STOP_EVENT_STATUS_DEPARTED
         )) {
-            throw new IllegalArgumentException("Boarding stop is no longer accessible: transport already departed from this stop");
+            throw new TicketEligibilityException("Boarding stop is no longer accessible: transport already departed from this stop");
         }
 
         List<TransportDepartureSlot> daySlots = transportDepartureSlotRepository
@@ -791,7 +815,7 @@ public class ClientService {
             .toList();
 
         if (fromTimes.isEmpty()) {
-            throw new IllegalArgumentException("No scheduled departure at selected boarding stop for today");
+            throw new TicketEligibilityException("No scheduled departure at selected boarding stop for today");
         }
 
         List<LocalTime> toTimes = daySlots.stream()
@@ -802,13 +826,13 @@ public class ClientService {
             .toList();
 
         if (toTimes.isEmpty()) {
-            throw new IllegalArgumentException("No scheduled departure at selected destination stop for today");
+            throw new TicketEligibilityException("No scheduled departure at selected destination stop for today");
         }
 
         boolean hasSegmentToday = fromTimes.stream()
             .anyMatch(fromTime -> toTimes.stream().anyMatch(toTime -> !toTime.isBefore(fromTime)));
         if (!hasSegmentToday) {
-            throw new IllegalArgumentException("Selected route segment is not scheduled for today");
+            throw new TicketEligibilityException("Selected route segment is not scheduled for today");
         }
 
         // Hard safety check: purchase must still be valid at the current server time.
@@ -816,15 +840,16 @@ public class ClientService {
         boolean withinCurrentWindow = fromTimes.stream()
             .anyMatch(fromTime -> !now.isAfter(fromTime.plusMinutes(MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES)));
         if (!withinCurrentWindow) {
-            throw new IllegalArgumentException("Selected departure window has already passed");
+            throw new TicketEligibilityException("Selected departure window has already passed");
         }
 
         // Optional UX check when client sends a selected departure time.
         if (selectedDepartureTime != null) {
             boolean selectedTimeIsEligible = fromTimes.stream()
-                .anyMatch(fromTime -> !selectedDepartureTime.isAfter(fromTime.plusMinutes(MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES)));
+                .anyMatch(fromTime -> !selectedDepartureTime.isBefore(fromTime)
+                    && !selectedDepartureTime.isAfter(fromTime.plusMinutes(MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES)));
             if (!selectedTimeIsEligible) {
-                throw new IllegalArgumentException("Selected departure time is no longer eligible");
+                throw new TicketEligibilityException("Selected departure time is no longer eligible");
             }
         }
 
@@ -838,12 +863,12 @@ public class ClientService {
                 routeContext.transport().getId(),
                 routeContext.fromStop().getId(),
                 routeContext.toStop().getId(),
-                "ACTIVE",
+                TICKET_STATUS_ACTIVE,
                 Instant.now()
             );
 
         if (usedCapacity >= transportCapacity) {
-            throw new IllegalArgumentException("No places left for the selected segment");
+            throw new TicketEligibilityException("No places left for the selected segment");
         }
     }
 
@@ -1206,5 +1231,11 @@ public class ClientService {
                                 int fromStopOrder,
                                 int toStopOrder,
                                 int stopCount) {
+    }
+
+    private static final class TicketEligibilityException extends IllegalArgumentException {
+        private TicketEligibilityException(String message) {
+            super(message);
+        }
     }
 }
