@@ -1,6 +1,12 @@
 package com.tuniway.connect.model.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
 import java.util.UUID;
 
 @Entity
@@ -17,7 +23,7 @@ public class Transport {
     private String name;
 
     @Column(nullable = false)
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = TransportTypeConverter.class)
     private TransportType type;
 
     @Column(nullable = false)
