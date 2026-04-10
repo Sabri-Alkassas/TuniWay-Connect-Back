@@ -21,6 +21,13 @@ public interface ShiftStopEventRepository extends JpaRepository<ShiftStopEvent, 
     @EntityGraph(attributePaths = {"stop", "workShift"})
     Optional<ShiftStopEvent> findByWorkShiftIdAndStopId(UUID workShiftId, UUID stopId);
 
+    boolean existsByWorkShiftTransportIdAndWorkShiftStatusIgnoreCaseAndStopIdAndStatusIgnoreCase(
+        UUID transportId,
+        String workShiftStatus,
+        UUID stopId,
+        String stopStatus
+    );
+
     void deleteByWorkShiftId(UUID workShiftId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

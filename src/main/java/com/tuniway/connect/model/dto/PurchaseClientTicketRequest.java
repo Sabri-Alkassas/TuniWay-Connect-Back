@@ -2,6 +2,7 @@ package com.tuniway.connect.model.dto;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 
+import java.time.LocalTime;
 import java.util.UUID;
 
 public class PurchaseClientTicketRequest {
@@ -9,6 +10,7 @@ public class PurchaseClientTicketRequest {
     private UUID transportId;
     private UUID fromStopId;
     private UUID toStopId;
+    private LocalTime plannedDepartureTime;
     @JsonAlias("paymentProvider")
     private String provider;
     private String providerReference;
@@ -44,6 +46,14 @@ public class PurchaseClientTicketRequest {
 
     public void setToStopId(UUID toStopId) {
         this.toStopId = toStopId;
+    }
+
+    public LocalTime getPlannedDepartureTime() {
+        return plannedDepartureTime;
+    }
+
+    public void setPlannedDepartureTime(LocalTime plannedDepartureTime) {
+        this.plannedDepartureTime = plannedDepartureTime;
     }
 
     public String getProvider() {

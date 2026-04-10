@@ -34,6 +34,7 @@ import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.repository.ClientProfileRepository;
 import com.tuniway.connect.repository.EmailVerificationCodeRepository;
 import com.tuniway.connect.repository.PaymentTransactionRepository;
+import com.tuniway.connect.repository.ShiftStopEventRepository;
 import com.tuniway.connect.repository.TicketProductRepository;
 import com.tuniway.connect.repository.TicketPurchaseRepository;
 import com.tuniway.connect.repository.TransportCountProjection;
@@ -54,6 +55,7 @@ import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -71,6 +73,7 @@ public class ClientService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
     private static final int DEFAULT_RADIUS_METERS = 500;
+    private static final int MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES = 5;
     private static final String DEFAULT_SORT = "name,asc";
     private static final double EARTH_RADIUS_METERS = 6_371_000d;
 
@@ -84,6 +87,7 @@ public class ClientService {
     private final TicketProductRepository ticketProductRepository;
     private final TicketPurchaseRepository ticketPurchaseRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
+    private final ShiftStopEventRepository shiftStopEventRepository;
 
     public ClientService(
         UserRepository userRepository,
@@ -95,7 +99,8 @@ public class ClientService {
         TransportDepartureSlotRepository transportDepartureSlotRepository,
         TicketProductRepository ticketProductRepository,
         TicketPurchaseRepository ticketPurchaseRepository,
-        PaymentTransactionRepository paymentTransactionRepository
+        PaymentTransactionRepository paymentTransactionRepository,
+        ShiftStopEventRepository shiftStopEventRepository
     ) {
         this.userRepository = userRepository;
         this.clientProfileRepository = clientProfileRepository;
@@ -107,6 +112,7 @@ public class ClientService {
         this.ticketProductRepository = ticketProductRepository;
         this.ticketPurchaseRepository = ticketPurchaseRepository;
         this.paymentTransactionRepository = paymentTransactionRepository;
+        this.shiftStopEventRepository = shiftStopEventRepository;
     }
 
     public ClientDashboardResponse getDashboard(UUID clientId) {
@@ -332,7 +338,9 @@ public class ClientService {
 
     private RouteContext tryResolveRouteContextForProducts(UUID transportId, UUID fromStopId, UUID toStopId) {
         try {
-            return resolveRouteContext(transportId, fromStopId, toStopId);
+            RouteContext routeContext = resolveRouteContext(transportId, fromStopId, toStopId);
+            validateDepartureEligibility(routeContext, LocalTime.now());
+            return routeContext;
         } catch (IllegalArgumentException ex) {
             return null;
         }
@@ -351,6 +359,8 @@ public class ClientService {
             request.getFromStopId(),
             request.getToStopId()
         );
+
+        validateDepartureEligibility(routeContext, request.getPlannedDepartureTime());
 
         TicketProduct product = resolveTicketProduct(request.getProductId());
         Instant purchaseTime = Instant.now();
@@ -749,8 +759,92 @@ public class ClientService {
             transport,
             fromRouteStop.getStop(),
             toRouteStop.getStop(),
+            fromRouteStop.getStopOrder(),
+            toRouteStop.getStopOrder(),
             toRouteStop.getStopOrder() - fromRouteStop.getStopOrder()
         );
+    }
+
+    private void validateDepartureEligibility(RouteContext routeContext, LocalTime selectedDepartureTime) {
+        String today = LocalDate.now().getDayOfWeek().name();
+
+        if (shiftStopEventRepository.existsByWorkShiftTransportIdAndWorkShiftStatusIgnoreCaseAndStopIdAndStatusIgnoreCase(
+            routeContext.transport().getId(),
+            "IN_PROGRESS",
+            routeContext.fromStop().getId(),
+            "departed"
+        )) {
+            throw new IllegalArgumentException("Boarding stop is no longer accessible: transport already departed from this stop");
+        }
+
+        List<TransportDepartureSlot> daySlots = transportDepartureSlotRepository
+            .findByTransportIdAndDayOfWeekIgnoreCaseOrderByStopOrderAscDepartureTimeAsc(routeContext.transport().getId(), today)
+            .stream()
+            .filter(this::isClientVisibleDeparture)
+            .toList();
+
+        List<LocalTime> fromTimes = daySlots.stream()
+            .filter(slot -> slot.getStop().getId().equals(routeContext.fromStop().getId()))
+            .filter(slot -> slot.getStopOrder() != null && slot.getStopOrder().equals(routeContext.fromStopOrder()))
+            .map(TransportDepartureSlot::getDepartureTime)
+            .sorted()
+            .toList();
+
+        if (fromTimes.isEmpty()) {
+            throw new IllegalArgumentException("No scheduled departure at selected boarding stop for today");
+        }
+
+        List<LocalTime> toTimes = daySlots.stream()
+            .filter(slot -> slot.getStop().getId().equals(routeContext.toStop().getId()))
+            .filter(slot -> slot.getStopOrder() != null && slot.getStopOrder().equals(routeContext.toStopOrder()))
+            .map(TransportDepartureSlot::getDepartureTime)
+            .sorted()
+            .toList();
+
+        if (toTimes.isEmpty()) {
+            throw new IllegalArgumentException("No scheduled departure at selected destination stop for today");
+        }
+
+        boolean hasSegmentToday = fromTimes.stream()
+            .anyMatch(fromTime -> toTimes.stream().anyMatch(toTime -> !toTime.isBefore(fromTime)));
+        if (!hasSegmentToday) {
+            throw new IllegalArgumentException("Selected route segment is not scheduled for today");
+        }
+
+        // Hard safety check: purchase must still be valid at the current server time.
+        LocalTime now = LocalTime.now();
+        boolean withinCurrentWindow = fromTimes.stream()
+            .anyMatch(fromTime -> !now.isAfter(fromTime.plusMinutes(MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES)));
+        if (!withinCurrentWindow) {
+            throw new IllegalArgumentException("Selected departure window has already passed");
+        }
+
+        // Optional UX check when client sends a selected departure time.
+        if (selectedDepartureTime != null) {
+            boolean selectedTimeIsEligible = fromTimes.stream()
+                .anyMatch(fromTime -> !selectedDepartureTime.isAfter(fromTime.plusMinutes(MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES)));
+            if (!selectedTimeIsEligible) {
+                throw new IllegalArgumentException("Selected departure time is no longer eligible");
+            }
+        }
+
+        Integer transportCapacity = routeContext.transport().getCapacity();
+        if (transportCapacity == null || transportCapacity <= 0) {
+            throw new IllegalArgumentException("Transport capacity is not configured");
+        }
+
+        long usedCapacity = ticketPurchaseRepository
+            .countByTransport_IdAndFromStop_IdAndToStop_IdAndStatusIgnoreCaseAndValidUntilAfter(
+                routeContext.transport().getId(),
+                routeContext.fromStop().getId(),
+                routeContext.toStop().getId(),
+                "ACTIVE",
+                Instant.now()
+            );
+
+        if (usedCapacity >= transportCapacity) {
+            throw new IllegalArgumentException("No places left for the selected segment");
+        }
     }
 
     private TicketProduct resolveTicketProduct(UUID productId) {
@@ -1106,6 +1200,11 @@ public class ClientService {
     private record BoundingBox(double minLatitude, double maxLatitude, double minLongitude, double maxLongitude) {
     }
 
-    private record RouteContext(Transport transport, TransportStop fromStop, TransportStop toStop, int stopCount) {
+    private record RouteContext(Transport transport,
+                                TransportStop fromStop,
+                                TransportStop toStop,
+                                int fromStopOrder,
+                                int toStopOrder,
+                                int stopCount) {
     }
 }
