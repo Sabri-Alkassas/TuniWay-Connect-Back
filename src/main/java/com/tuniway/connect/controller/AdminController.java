@@ -55,6 +55,24 @@ public class AdminController {
     }
 
     @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/staff-accounts")
+    public ResponseEntity<java.util.List<RegisterEmployeeResponse>> listStaffAccounts() {
+        return new ResponseEntity<>(adminService.listStaffAccounts(), HttpStatus.OK);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/transports")
+    public ResponseEntity<java.util.List<TransportResponse>> listTransports() {
+        return new ResponseEntity<>(adminService.listTransports(), HttpStatus.OK);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/shifts")
+    public ResponseEntity<java.util.List<AdminShiftResponse>> listShifts() {
+        return new ResponseEntity<>(adminService.listShifts(), HttpStatus.OK);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/staff-accounts")
     public ResponseEntity<RegisterEmployeeResponse> createStaffAccount(@RequestBody RegisterEmployeeRequest request) {
         try {

@@ -44,6 +44,7 @@ import com.tuniway.connect.repository.TransportRouteStopRepository;
 import com.tuniway.connect.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -229,12 +230,21 @@ public class ClientService {
         Pageable pageable = buildPageable(page, size, sort);
         TransportType transportType = parseTransportType(type);
 
-        Page<Transport> transports = transportRepository.searchForClient(
-            normalizeToLowerCase(q),
-            normalizeToLowerCase(zone),
-            transportType,
-            active,
-            pageable
+        String normalizedQuery = normalizeToLowerCase(q);
+        String normalizedZone = normalizeToLowerCase(zone);
+        List<Transport> filteredTransports = transportRepository.findAll(pageable.getSort()).stream()
+            .filter(transport -> matchesTransportQuery(transport, normalizedQuery))
+            .filter(transport -> matchesTransportZone(transport, normalizedZone))
+            .filter(transport -> transportType == null || transport.getType() == transportType)
+            .filter(transport -> active == null || transport.getActive().equals(active))
+            .toList();
+
+        int start = Math.min((int) pageable.getOffset(), filteredTransports.size());
+        int end = Math.min(start + pageable.getPageSize(), filteredTransports.size());
+        Page<Transport> transports = new PageImpl<>(
+            filteredTransports.subList(start, end),
+            pageable,
+            filteredTransports.size()
         );
 
         List<UUID> transportIds = transports.getContent().stream().map(Transport::getId).toList();
@@ -253,6 +263,33 @@ public class ClientService {
         response.setTotalPages(transports.getTotalPages());
         response.setSort(normalizeSortExpression(sort));
         return response;
+    }
+
+    private boolean matchesTransportQuery(Transport transport, String query) {
+        if (query == null) {
+            return true;
+        }
+
+        return containsIgnoreCase(transport.getCode(), query)
+            || containsIgnoreCase(transport.getName(), query)
+            || containsIgnoreCase(transport.getRoute_name(), query)
+            || containsIgnoreCase(transport.getStart_point(), query)
+            || containsIgnoreCase(transport.getEnd_point(), query)
+            || containsIgnoreCase(transport.getZone(), query)
+            || containsIgnoreCase(transport.getOperating_zone(), query);
+    }
+
+    private boolean matchesTransportZone(Transport transport, String zone) {
+        if (zone == null) {
+            return true;
+        }
+
+        return zone.equals(normalizeToLowerCase(transport.getZone()))
+            || zone.equals(normalizeToLowerCase(transport.getOperating_zone()));
+    }
+
+    private boolean containsIgnoreCase(String value, String query) {
+        return value != null && value.toLowerCase(Locale.ENGLISH).contains(query);
     }
 
     public ClientTransportDetailsResponse getTransport(UUID transportId) {

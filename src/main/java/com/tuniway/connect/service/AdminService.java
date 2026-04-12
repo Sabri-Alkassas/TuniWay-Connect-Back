@@ -120,6 +120,27 @@ public class AdminService {
         return response;
     }
 
+    public List<RegisterEmployeeResponse> listStaffAccounts() {
+        return userRepository.findAll().stream()
+            .filter(user -> STAFF_ROLES.contains(user.getRole()))
+            .sorted(Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+            .map(this::buildStaffAccountResponse)
+            .toList();
+    }
+
+    public List<TransportResponse> listTransports() {
+        return transportRepository.findAll().stream()
+            .sorted(Comparator.comparing(Transport::getName, Comparator.nullsLast(String::compareToIgnoreCase)))
+            .map(transport -> buildTransportResponse(transport, "Transport retrieved successfully"))
+            .toList();
+    }
+
+    public List<AdminShiftResponse> listShifts() {
+        return workShiftRepository.findAllByOrderByScheduleStartDesc().stream()
+            .map(shift -> buildShiftResponse(shift, "Shift retrieved successfully"))
+            .toList();
+    }
+
     @Transactional
     public RegisterEmployeeResponse createStaffAccount(RegisterEmployeeRequest request) {
         if (request == null) {
@@ -272,10 +293,7 @@ public class AdminService {
 
         userRepository.save(user);
 
-        UpdatedEmployeeResponse response = new UpdatedEmployeeResponse();
-        response.setSuccess(true);
-        response.setMessage("Staff account updated successfully");
-        return response;
+        return buildUpdatedEmployeeResponse(user, "Staff account updated successfully");
     }
 
     @Transactional
@@ -292,10 +310,7 @@ public class AdminService {
             user.setStatus(newStatus);
             userRepository.save(user);
 
-            UpdatedEmployeeResponse response = new UpdatedEmployeeResponse();
-            response.setSuccess(true);
-            response.setMessage("Staff account status updated successfully");
-            return response;
+            return buildUpdatedEmployeeResponse(user, "Staff account status updated successfully");
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid status value. Allowed values are: ACTIVE, INACTIVE");
         }
@@ -306,10 +321,7 @@ public class AdminService {
         User user = requireStaffUser(staffId);
         userRepository.delete(user);
 
-        UpdatedEmployeeResponse response = new UpdatedEmployeeResponse();
-        response.setSuccess(true);
-        response.setMessage("Staff account deleted successfully");
-        return response;
+        return buildUpdatedEmployeeResponse(user, "Staff account deleted successfully");
     }
 
     @Transactional
@@ -982,7 +994,19 @@ public class AdminService {
     }
 
     private TransportResponse buildTransportResponse(Transport transport, String message) {
-        return new TransportResponse(transport.getCode(), transport.getType(), message, true);
+        TransportResponse response = new TransportResponse(transport.getCode(), transport.getType(), message, true);
+        response.setId(transport.getId());
+        response.setName(transport.getName());
+        response.setZone(transport.getZone());
+        response.setActive(Boolean.TRUE.equals(transport.getActive()));
+        response.setStopsCount(transportRouteStopRepository.findByTransportIdOrderByStopOrderAsc(transport.getId()).stream()
+            .filter(routeStop -> !Boolean.FALSE.equals(routeStop.getActive()))
+            .count());
+        response.setDeparturesCount(transportDepartureSlotRepository
+            .findByTransportIdOrderByStopOrderAscDayOfWeekAscDepartureTimeAsc(transport.getId()).stream()
+            .filter(slot -> !Boolean.FALSE.equals(slot.getActive()))
+            .count());
+        return response;
     }
 
     private AdminShiftResponse buildShiftResponse(WorkShift shift, String message) {
@@ -991,6 +1015,7 @@ public class AdminService {
         response.setMessage(message);
         response.setShiftId(shift.getId());
         response.setEmployeeId(shift.getEmployeeId());
+        response.setEmployeeName(resolveEmployeeDisplayName(shift.getEmployeeId()));
         response.setTransportId(shift.getTransport() != null ? shift.getTransport().getId() : null);
         response.setTransportName(shift.getTransport() != null ? shift.getTransport().getName() : null);
         response.setScheduleStart(shift.getScheduleStart());
@@ -999,6 +1024,66 @@ public class AdminService {
         response.setActualStart(shift.getActualStart());
         response.setActualEnd(shift.getActualEnd());
         return response;
+    }
+
+    private RegisterEmployeeResponse buildStaffAccountResponse(User user) {
+        RegisterEmployeeResponse response = new RegisterEmployeeResponse();
+        response.setSuccess(true);
+        response.setMessage("Staff account retrieved successfully");
+        response.setId(user.getId());
+        response.setEmail(user.getEmail());
+        response.setRole(user.getRole());
+        response.setStatus(user.getStatus());
+        response.setCreatedAt(user.getCreatedAt());
+
+        if (user.getRole() == Role.EMPLOYEE) {
+            employeeProfileRepository.findByUserId(user.getId()).ifPresent(profile -> {
+                response.setFullName(profile.getFullName());
+                response.setPhone(profile.getPhone());
+                response.setLicense_number(profile.getLicenseNumber());
+                response.setEmployee_code(profile.getEmployeeCode());
+            });
+        } else if (user.getRole() == Role.ADMIN) {
+            adminProfileRepository.findByUserId(user.getId()).ifPresent(profile -> {
+                response.setFullName(profile.getFullName());
+                response.setAdmin_code(profile.getAdminCode());
+            });
+        }
+
+        return response;
+    }
+
+    private UpdatedEmployeeResponse buildUpdatedEmployeeResponse(User user, String message) {
+        UpdatedEmployeeResponse response = new UpdatedEmployeeResponse();
+        response.setSuccess(true);
+        response.setMessage(message);
+        response.setId(user.getId());
+        response.setEmail(user.getEmail());
+        response.setRole(user.getRole());
+        response.setStatus(user.getStatus());
+        response.setCreatedAt(user.getCreatedAt());
+
+        if (user.getRole() == Role.EMPLOYEE) {
+            employeeProfileRepository.findByUserId(user.getId()).ifPresent(profile -> {
+                response.setFullName(profile.getFullName());
+                response.setPhone(profile.getPhone());
+                response.setLicense_number(profile.getLicenseNumber());
+                response.setEmployee_code(profile.getEmployeeCode());
+            });
+        } else if (user.getRole() == Role.ADMIN) {
+            adminProfileRepository.findByUserId(user.getId()).ifPresent(profile -> {
+                response.setFullName(profile.getFullName());
+                response.setAdmin_code(profile.getAdminCode());
+            });
+        }
+
+        return response;
+    }
+
+    private String resolveEmployeeDisplayName(UUID employeeId) {
+        return employeeProfileRepository.findByUserId(employeeId)
+            .map(EmployeeProfile::getFullName)
+            .orElseGet(() -> userRepository.findById(employeeId).map(User::getEmail).orElse("Employee"));
     }
 
     private String requireNonBlank(String value, String message) {

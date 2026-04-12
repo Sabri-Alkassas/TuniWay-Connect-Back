@@ -8,6 +8,7 @@ public class AdminShiftResponse {
     private String message;
     private UUID shiftId;
     private UUID employeeId;
+    private String employeeName;
     private UUID transportId;
     private String transportName;
     private Instant scheduleStart;
@@ -46,6 +47,14 @@ public class AdminShiftResponse {
 
     public void setEmployeeId(UUID employeeId) {
         this.employeeId = employeeId;
+    }
+
+    public String getEmployeeName() {
+        return employeeName;
+    }
+
+    public void setEmployeeName(String employeeName) {
+        this.employeeName = employeeName;
     }
 
     public UUID getTransportId() {

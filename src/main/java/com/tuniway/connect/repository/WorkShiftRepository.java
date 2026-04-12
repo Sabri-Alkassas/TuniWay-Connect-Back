@@ -13,6 +13,9 @@ import java.util.UUID;
 @Repository
 public interface WorkShiftRepository extends JpaRepository<WorkShift, UUID> {
     @EntityGraph(attributePaths = {"transport"})
+    List<WorkShift> findAllByOrderByScheduleStartDesc();
+
+    @EntityGraph(attributePaths = {"transport"})
     List<WorkShift> findByEmployeeIdOrderByScheduleStartAsc(UUID employeeId);
 
     Optional<WorkShift> findByIdAndEmployeeId(UUID id, UUID employeeId);

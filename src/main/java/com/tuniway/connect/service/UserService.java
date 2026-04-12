@@ -28,6 +28,8 @@ import com.tuniway.connect.repository.RefreshTokenRepository;
 import com.tuniway.connect.repository.UserRepository;
 
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +42,8 @@ import java.util.UUID;
 
 @Service
 public class UserService {
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
+
     private final UserRepository userRepository;
     private final EmailVerificationCodeRepository emailVerificationCodeRepository;
     private final ClientProfileRepository clientProfileRepository;
@@ -186,31 +190,39 @@ public class UserService {
     @Transactional
     public LoginResponse login(LoginRequest request) {
         if (request.getEmail() == null || request.getEmail().isBlank()) {
+            log.warn("Login rejected: missing email");
             throw new RuntimeException("Email is required");
         }
 
         if (request.getPassword_hash() == null || request.getPassword_hash().isBlank()) {
+            log.warn("Login rejected for email={}: missing password_hash", request.getEmail());
             throw new RuntimeException("password_hash is required");
         }
 
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("Invalid email or password"));
 
+        log.info("Login lookup found user email={} role={} status={}", user.getEmail(), user.getRole(), user.getStatus());
+
         if (!user.getPassword_hash().equals(request.getPassword_hash())) {
+            log.warn("Login rejected for email={}: password mismatch", request.getEmail());
             throw new RuntimeException("Invalid email or password");
         }
 
         if (user.getStatus() != AccountStatus.ACTIVE) {
+            log.warn("Login rejected for email={}: account status={}", request.getEmail(), user.getStatus());
             throw new RuntimeException("Account is inactive");
         }
 
         if (requiresTwoFactor(user.getRole())) {
             String secret = loadStaffTwoFactorSecret(user);
             if (secret.isBlank()) {
+                log.warn("Login rejected for email={}: empty 2FA secret", request.getEmail());
                 throw new RuntimeException("Two-factor secret is not configured");
             }
 
             String tempToken = twoFactorChallengeService.createChallenge(user.getId(), Duration.ofMinutes(5));
+            log.info("Login requires 2FA for email={} role={}", user.getEmail(), user.getRole());
 
             LoginResponse response = new LoginResponse();
             response.setId(user.getId());
@@ -240,6 +252,7 @@ public class UserService {
         response.setAccessToken(jwtService.generateAccessToken(updatedUser));
         response.setRefreshToken(issueRefreshTokenForUser(updatedUser.getId()));
         response.setMessage("Login successful");
+        log.info("Login succeeded for email={} role={}", updatedUser.getEmail(), updatedUser.getRole());
         return response;
     }
 

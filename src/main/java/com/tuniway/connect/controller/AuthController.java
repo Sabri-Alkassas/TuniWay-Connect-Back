@@ -13,6 +13,8 @@ import com.tuniway.connect.model.dto.RefreshResponse;
 import com.tuniway.connect.model.dto.LogoutRequest;
 import com.tuniway.connect.model.dto.LogoutResponse;
 import com.tuniway.connect.service.UserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     @Autowired
     private UserService userService;
@@ -52,10 +55,20 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
+        log.info("POST /api/v1/auth/login received for email={}", request.getEmail());
         try {
             LoginResponse response = userService.login(request);
+            log.info(
+                "POST /api/v1/auth/login completed for email={} authenticated={} twoFactorRequired={} role={} status={}",
+                request.getEmail(),
+                response.isAuthenticated(),
+                response.isTwoFactorRequired(),
+                response.getRole(),
+                response.getStatus()
+            );
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {
+            log.warn("POST /api/v1/auth/login failed for email={} reason={}", request.getEmail(), e.getMessage());
             LoginResponse errorResponse = new LoginResponse();
             errorResponse.setAuthenticated(false);
             errorResponse.setMessage(e.getMessage());
