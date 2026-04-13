@@ -18,7 +18,10 @@ public class ClientDashboardResponse {
     private Instant lastLoginAt;
     private boolean emailVerified;
     private boolean profileComplete;
+    private long totalTrips;
+    private long activeTickets;
     private List<String> missingProfileFields;
+    private List<ClientTicketDto> recentTickets;
 
     public boolean isSuccess() {
         return success;
@@ -108,11 +111,35 @@ public class ClientDashboardResponse {
         this.profileComplete = profileComplete;
     }
 
+    public long getTotalTrips() {
+        return totalTrips;
+    }
+
+    public void setTotalTrips(long totalTrips) {
+        this.totalTrips = totalTrips;
+    }
+
+    public long getActiveTickets() {
+        return activeTickets;
+    }
+
+    public void setActiveTickets(long activeTickets) {
+        this.activeTickets = activeTickets;
+    }
+
     public List<String> getMissingProfileFields() {
         return missingProfileFields;
     }
 
     public void setMissingProfileFields(List<String> missingProfileFields) {
         this.missingProfileFields = missingProfileFields;
+    }
+
+    public List<ClientTicketDto> getRecentTickets() {
+        return recentTickets;
+    }
+
+    public void setRecentTickets(List<ClientTicketDto> recentTickets) {
+        this.recentTickets = recentTickets;
     }
 }

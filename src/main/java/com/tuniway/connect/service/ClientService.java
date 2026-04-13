@@ -23,10 +23,12 @@ import com.tuniway.connect.model.entity.ClientProfile;
 import com.tuniway.connect.model.entity.EmailVerificationCode;
 import com.tuniway.connect.model.entity.PaymentTransaction;
 import com.tuniway.connect.model.entity.Role;
+import com.tuniway.connect.model.entity.TicketFareRule;
 import com.tuniway.connect.model.entity.TicketProduct;
 import com.tuniway.connect.model.entity.TicketPurchase;
 import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.model.entity.TransportDepartureSlot;
+import com.tuniway.connect.model.entity.TransportFareProfile;
 import com.tuniway.connect.model.entity.TransportRouteStop;
 import com.tuniway.connect.model.entity.TransportStop;
 import com.tuniway.connect.model.entity.TransportType;
@@ -36,10 +38,12 @@ import com.tuniway.connect.repository.ClientProfileRepository;
 import com.tuniway.connect.repository.EmailVerificationCodeRepository;
 import com.tuniway.connect.repository.PaymentTransactionRepository;
 import com.tuniway.connect.repository.ShiftStopEventRepository;
+import com.tuniway.connect.repository.TicketFareRuleRepository;
 import com.tuniway.connect.repository.TicketProductRepository;
 import com.tuniway.connect.repository.TicketPurchaseRepository;
 import com.tuniway.connect.repository.TransportCountProjection;
 import com.tuniway.connect.repository.TransportDepartureSlotRepository;
+import com.tuniway.connect.repository.TransportFareProfileRepository;
 import com.tuniway.connect.repository.TransportRepository;
 import com.tuniway.connect.repository.TransportRouteStopRepository;
 import com.tuniway.connect.repository.UserRepository;
@@ -64,10 +68,12 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -82,7 +88,17 @@ public class ClientService {
     private static final String WORK_SHIFT_STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STOP_EVENT_STATUS_DEPARTED = "departed";
     private static final String TICKET_STATUS_ACTIVE = "ACTIVE";
+    private static final String TICKET_STATUS_USED = "USED";
+    private static final String TICKET_STATUS_CANCELLED = "CANCELLED";
     private static final String PAYMENT_STATUS_COMPLETED = "COMPLETED";
+    private static final String FARE_CLASS_STANDARD = "STANDARD";
+    private static final String FARE_CLASS_FIRST_CLASS = "FIRST_CLASS";
+    private static final String PRICING_MODEL_INTERPOLATED_SECTION = "INTERPOLATED_SECTION";
+    private static final String PRICING_MODEL_TGM_SECTION_BOUNDARY = "TGM_SECTION_BOUNDARY";
+    private static final double DEFAULT_METRO_MINUTES_PER_STOP = 3.0d;
+    private static final double DEFAULT_TGM_MINUTES_PER_STOP = 3.5d;
+    private static final double DEFAULT_BUS_MINUTES_PER_STOP = 4.0d;
+    private static final double DEFAULT_TRAIN_MINUTES_PER_STOP = 5.0d;
     private static final double EARTH_RADIUS_METERS = 6_371_000d;
 
     private final UserRepository userRepository;
@@ -92,6 +108,8 @@ public class ClientService {
     private final TransportRepository transportRepository;
     private final TransportRouteStopRepository transportRouteStopRepository;
     private final TransportDepartureSlotRepository transportDepartureSlotRepository;
+    private final TransportFareProfileRepository transportFareProfileRepository;
+    private final TicketFareRuleRepository ticketFareRuleRepository;
     private final TicketProductRepository ticketProductRepository;
     private final TicketPurchaseRepository ticketPurchaseRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
@@ -106,6 +124,8 @@ public class ClientService {
         TransportRepository transportRepository,
         TransportRouteStopRepository transportRouteStopRepository,
         TransportDepartureSlotRepository transportDepartureSlotRepository,
+        TransportFareProfileRepository transportFareProfileRepository,
+        TicketFareRuleRepository ticketFareRuleRepository,
         TicketProductRepository ticketProductRepository,
         TicketPurchaseRepository ticketPurchaseRepository,
         PaymentTransactionRepository paymentTransactionRepository,
@@ -119,6 +139,8 @@ public class ClientService {
         this.transportRepository = transportRepository;
         this.transportRouteStopRepository = transportRouteStopRepository;
         this.transportDepartureSlotRepository = transportDepartureSlotRepository;
+        this.transportFareProfileRepository = transportFareProfileRepository;
+        this.ticketFareRuleRepository = ticketFareRuleRepository;
         this.ticketProductRepository = ticketProductRepository;
         this.ticketPurchaseRepository = ticketPurchaseRepository;
         this.paymentTransactionRepository = paymentTransactionRepository;
@@ -130,6 +152,8 @@ public class ClientService {
         User user = requireClientUser(clientId);
         ClientProfile profile = requireClientProfile(clientId);
         List<String> missingProfileFields = collectMissingProfileFields(profile);
+        List<TicketPurchase> recentPurchases = ticketPurchaseRepository.findTop3ByUserIdOrderByPurchaseTimeDesc(clientId);
+        Map<UUID, PaymentTransaction> recentPayments = loadLatestPayments(recentPurchases);
 
         ClientDashboardResponse response = new ClientDashboardResponse();
         response.setSuccess(true);
@@ -143,7 +167,16 @@ public class ClientService {
         response.setLastLoginAt(user.getLastLoginAt());
         response.setEmailVerified(user.getStatus() == AccountStatus.ACTIVE);
         response.setProfileComplete(missingProfileFields.isEmpty());
+        response.setTotalTrips(ticketPurchaseRepository.countByUserId(clientId));
+        response.setActiveTickets(ticketPurchaseRepository.countByUserIdAndStatusIgnoreCaseAndValidUntilAfter(
+            clientId,
+            TICKET_STATUS_ACTIVE,
+            Instant.now()
+        ));
         response.setMissingProfileFields(missingProfileFields);
+        response.setRecentTickets(recentPurchases.stream()
+            .map(purchase -> toTicketDto(purchase, recentPayments.get(purchase.getId())))
+            .toList());
         return response;
     }
 
@@ -332,13 +365,7 @@ public class ClientService {
 
         Transport transport = requireTransport(transportId);
         String dayOfWeek = normalizeDisplayDayOfWeek(date.getDayOfWeek().name());
-
-        List<ClientTransportDepartureDto> departures = transportDepartureSlotRepository
-            .findByTransportIdAndDayOfWeekIgnoreCaseOrderByStopOrderAscDepartureTimeAsc(transportId, dayOfWeek)
-            .stream()
-            .filter(this::isClientVisibleDeparture)
-            .map(this::toTransportDepartureDto)
-            .toList();
+        List<ClientTransportDepartureDto> departures = buildClientTransportDepartures(transport, date);
 
         ClientTransportDeparturesResponse response = new ClientTransportDeparturesResponse();
         response.setSuccess(true);
@@ -369,7 +396,11 @@ public class ClientService {
         List<ClientTicketProductDto> products = ticketProductRepository
             .findByActiveTrueOrderByPriceAscValidDurationMinutesAscNameAsc()
             .stream()
+            .filter(product -> isProductApplicableToTransport(product, routeContext.transport()))
             .map(product -> toTicketProductDto(product, routeContext))
+            .sorted(Comparator.comparing(ClientTicketProductDto::getPrice)
+                .thenComparing(ClientTicketProductDto::getValidDurationMinutes)
+                .thenComparing(ClientTicketProductDto::getName))
             .toList();
 
         if (products.isEmpty()) {
@@ -419,13 +450,15 @@ public class ClientService {
             routeContext.toStop(),
             routeContext.fromStopOrder(),
             routeContext.toStopOrder(),
-            routeContext.stopCount()
+            routeContext.stopCount(),
+            routeContext.totalRouteSegments()
         );
 
         validateDepartureEligibility(lockedRouteContext, request.getPlannedDepartureTime());
 
-        TicketProduct product = resolveTicketProduct(request.getProductId());
+        TicketProduct product = resolveTicketProduct(request.getProductId(), lockedRouteContext.transport());
         Instant purchaseTime = Instant.now();
+        BigDecimal calculatedFare = calculateRouteFare(lockedRouteContext, product);
 
         TicketPurchase purchase = new TicketPurchase();
         purchase.setUserId(clientId);
@@ -434,6 +467,8 @@ public class ClientService {
         purchase.setFromStop(lockedRouteContext.fromStop());
         purchase.setToStop(lockedRouteContext.toStop());
         purchase.setStopCount(lockedRouteContext.stopCount());
+        purchase.setFromStopOrder(lockedRouteContext.fromStopOrder());
+        purchase.setToStopOrder(lockedRouteContext.toStopOrder());
         purchase.setStatus(TICKET_STATUS_ACTIVE);
         purchase.setPurchaseTime(purchaseTime);
         purchase.setValidUntil(purchaseTime.plus(product.getValidDurationMinutes(), ChronoUnit.MINUTES));
@@ -445,7 +480,7 @@ public class ClientService {
         payment.setProviderReference(resolveRequiredOrDefault(request.getProviderReference(), "MANUAL-" + savedPurchase.getId()));
         payment.setPaymentMethod(resolveRequiredOrDefault(request.getPaymentMethod(), "CASH"));
         payment.setProcessedAt(purchaseTime);
-        payment.setAmount(calculateRouteFare(lockedRouteContext.transport().getType(), lockedRouteContext.stopCount()));
+        payment.setAmount(calculatedFare);
         payment.setStatus(PAYMENT_STATUS_COMPLETED);
         PaymentTransaction savedPayment = paymentTransactionRepository.save(payment);
 
@@ -461,21 +496,7 @@ public class ClientService {
 
         Pageable pageable = buildTicketPageable(page, size, sort);
         Page<TicketPurchase> purchases = ticketPurchaseRepository.findByUserId(clientId, pageable);
-
-        List<UUID> purchaseIds = purchases.getContent().stream().map(TicketPurchase::getId).toList();
-        Map<UUID, PaymentTransaction> latestPayments;
-        if (purchaseIds.isEmpty()) {
-            latestPayments = Map.of();
-        } else {
-            latestPayments = paymentTransactionRepository
-                .findByTicketPurchaseIdInOrderByProcessedAtDesc(purchaseIds)
-                .stream()
-                .collect(Collectors.toMap(
-                    payment -> payment.getTicketPurchase().getId(),
-                    payment -> payment,
-                    (left, right) -> left
-                ));
-        }
+        Map<UUID, PaymentTransaction> latestPayments = loadLatestPayments(purchases.getContent());
 
         ClientTicketHistoryResponse response = new ClientTicketHistoryResponse();
         response.setSuccess(true);
@@ -817,10 +838,8 @@ public class ClientService {
             throw new IllegalArgumentException("Transport is inactive");
         }
 
-        Map<UUID, TransportRouteStop> routeStopsById = transportRouteStopRepository
-            .findByTransportIdOrderByStopOrderAsc(transportId)
-            .stream()
-            .filter(this::isClientVisibleRouteStop)
+        List<TransportRouteStop> routeStops = loadVisibleRouteStops(transportId);
+        Map<UUID, TransportRouteStop> routeStopsById = routeStops.stream()
             .collect(Collectors.toMap(routeStop -> routeStop.getStop().getId(), routeStop -> routeStop));
 
         TransportRouteStop fromRouteStop = routeStopsById.get(fromStopId);
@@ -842,13 +861,12 @@ public class ClientService {
             toRouteStop.getStop(),
             fromRouteStop.getStopOrder(),
             toRouteStop.getStopOrder(),
-            toRouteStop.getStopOrder() - fromRouteStop.getStopOrder()
+            toRouteStop.getStopOrder() - fromRouteStop.getStopOrder(),
+            routeStops.get(routeStops.size() - 1).getStopOrder() - routeStops.get(0).getStopOrder()
         );
     }
 
     private void validateDepartureEligibility(RouteContext routeContext, LocalTime selectedDepartureTime) {
-        String today = LocalDate.now().getDayOfWeek().name();
-
         if (shiftStopEventRepository.existsByWorkShiftTransportIdAndWorkShiftStatusIgnoreCaseAndStopIdAndStatusIgnoreCase(
             routeContext.transport().getId(),
             WORK_SHIFT_STATUS_IN_PROGRESS,
@@ -858,53 +876,22 @@ public class ClientService {
             throw new TicketEligibilityException("Boarding stop is no longer accessible: transport already departed from this stop");
         }
 
-        List<TransportDepartureSlot> daySlots = transportDepartureSlotRepository
-            .findByTransportIdAndDayOfWeekIgnoreCaseOrderByStopOrderAscDepartureTimeAsc(routeContext.transport().getId(), today)
-            .stream()
-            .filter(this::isClientVisibleDeparture)
-            .toList();
-
-        List<LocalTime> fromTimes = daySlots.stream()
-            .filter(slot -> slot.getStop().getId().equals(routeContext.fromStop().getId()))
-            .filter(slot -> slot.getStopOrder() != null && slot.getStopOrder().equals(routeContext.fromStopOrder()))
-            .map(TransportDepartureSlot::getDepartureTime)
-            .sorted()
-            .toList();
-
-        if (fromTimes.isEmpty()) {
-            throw new TicketEligibilityException("No scheduled departure at selected boarding stop for today");
-        }
-
-        List<LocalTime> toTimes = daySlots.stream()
-            .filter(slot -> slot.getStop().getId().equals(routeContext.toStop().getId()))
-            .filter(slot -> slot.getStopOrder() != null && slot.getStopOrder().equals(routeContext.toStopOrder()))
-            .map(TransportDepartureSlot::getDepartureTime)
-            .sorted()
-            .toList();
-
-        if (toTimes.isEmpty()) {
-            throw new TicketEligibilityException("No scheduled departure at selected destination stop for today");
-        }
-
-        boolean hasSegmentToday = fromTimes.stream()
-            .anyMatch(fromTime -> toTimes.stream().anyMatch(toTime -> !toTime.isBefore(fromTime)));
-        if (!hasSegmentToday) {
+        List<DepartureWindow> departureWindows = resolveDepartureWindows(routeContext, LocalDate.now());
+        if (departureWindows.isEmpty()) {
             throw new TicketEligibilityException("Selected route segment is not scheduled for today");
         }
 
-        // Hard safety check: purchase must still be valid at the current server time.
         LocalTime now = LocalTime.now();
-        boolean withinCurrentWindow = fromTimes.stream()
-            .anyMatch(fromTime -> !now.isAfter(fromTime.plusMinutes(MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES)));
+        boolean withinCurrentWindow = departureWindows.stream()
+            .anyMatch(window -> !now.isAfter(window.fromTime().plusMinutes(MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES)));
         if (!withinCurrentWindow) {
             throw new TicketEligibilityException("Selected departure window has already passed");
         }
 
-        // Optional UX check when client sends a selected departure time.
         if (selectedDepartureTime != null) {
-            boolean selectedTimeIsEligible = fromTimes.stream()
-                .anyMatch(fromTime -> !selectedDepartureTime.isBefore(fromTime)
-                    && !selectedDepartureTime.isAfter(fromTime.plusMinutes(MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES)));
+            boolean selectedTimeIsEligible = departureWindows.stream()
+                .anyMatch(window -> Math.abs(ChronoUnit.MINUTES.between(selectedDepartureTime, window.fromTime()))
+                    <= MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES);
             if (!selectedTimeIsEligible) {
                 throw new TicketEligibilityException("Selected departure time is no longer eligible");
             }
@@ -915,57 +902,44 @@ public class ClientService {
             throw new IllegalArgumentException("Transport capacity is not configured");
         }
 
-        long usedCapacity = ticketPurchaseRepository
-            .countByTransport_IdAndFromStop_IdAndToStop_IdAndStatusIgnoreCaseAndValidUntilAfter(
-                routeContext.transport().getId(),
-                routeContext.fromStop().getId(),
-                routeContext.toStop().getId(),
-                TICKET_STATUS_ACTIVE,
-                Instant.now()
-            );
+        long usedCapacity = ticketPurchaseRepository.countActiveOverlappingSegments(
+            routeContext.transport().getId(),
+            routeContext.fromStopOrder(),
+            routeContext.toStopOrder(),
+            TICKET_STATUS_ACTIVE,
+            Instant.now()
+        );
 
         if (usedCapacity >= transportCapacity) {
             throw new TicketEligibilityException("No places left for the selected segment");
         }
     }
 
-    private TicketProduct resolveTicketProduct(UUID productId) {
+    private TicketProduct resolveTicketProduct(UUID productId, Transport transport) {
+        List<TicketProduct> applicableProducts = ticketProductRepository.findByActiveTrueOrderByPriceAscValidDurationMinutesAscNameAsc()
+            .stream()
+            .filter(product -> isProductApplicableToTransport(product, transport))
+            .toList();
+
+        if (applicableProducts.isEmpty()) {
+            throw new IllegalArgumentException("No active ticket products available");
+        }
+
         if (productId != null) {
-            return ticketProductRepository.findByIdAndActiveTrue(productId)
+            return applicableProducts.stream()
+                .filter(product -> productId.equals(product.getId()))
+                .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Ticket product not found or inactive"));
         }
 
-        return ticketProductRepository.findByActiveTrueOrderByPriceAscValidDurationMinutesAscNameAsc().stream()
-            .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("No active ticket products available"));
+        return applicableProducts.get(0);
     }
 
-    private BigDecimal calculateRouteFare(TransportType transportType, int stopCount) {
-        if (transportType == null) {
-            throw new IllegalArgumentException("Transport type is required to calculate fare");
-        }
-
-        BigDecimal baseFare;
-        BigDecimal perStopFare;
-        switch (transportType) {
-            case BUS -> {
-                baseFare = new BigDecimal("0.80");
-                perStopFare = new BigDecimal("0.25");
-            }
-            case METRO -> {
-                baseFare = new BigDecimal("0.70");
-                perStopFare = new BigDecimal("0.20");
-            }
-            case TRAIN -> {
-                baseFare = new BigDecimal("1.00");
-                perStopFare = new BigDecimal("0.35");
-            }
-            default -> throw new IllegalArgumentException("Unsupported transport type");
-        }
-
-        return baseFare
-            .add(perStopFare.multiply(BigDecimal.valueOf(Math.max(stopCount, 1))))
-            .setScale(2, RoundingMode.HALF_UP);
+    private BigDecimal calculateRouteFare(RouteContext routeContext, TicketProduct product) {
+        TransportFareProfile fareProfile = resolveFareProfile(routeContext.transport());
+        int sectionCount = determineSectionCount(routeContext, fareProfile);
+        TicketFareRule fareRule = resolveFareRule(routeContext.transport(), product, sectionCount);
+        return fareRule.getPrice().setScale(3, RoundingMode.HALF_UP);
     }
 
     private ClientTicketProductDto toTicketProductDto(TicketProduct product, RouteContext routeContext) {
@@ -973,7 +947,7 @@ public class ClientService {
         dto.setId(product.getId());
         dto.setName(product.getName());
         dto.setDescription(product.getDescription());
-        dto.setPrice(calculateRouteFare(routeContext.transport().getType(), routeContext.stopCount()));
+        dto.setPrice(calculateRouteFare(routeContext, product));
         dto.setValidDurationMinutes(product.getValidDurationMinutes());
         dto.setActive(product.getActive());
         dto.setTransportId(routeContext.transport().getId());
@@ -1001,7 +975,7 @@ public class ClientService {
         dto.setToStopId(purchase.getToStop() != null ? purchase.getToStop().getId() : null);
         dto.setToStopName(purchase.getToStop() != null ? purchase.getToStop().getStopName() : null);
         dto.setStopCount(purchase.getStopCount());
-        dto.setStatus(purchase.getStatus());
+        dto.setStatus(resolveClientTicketStatus(purchase.getStatus(), purchase.getValidUntil()));
         dto.setValidUntil(purchase.getValidUntil());
         dto.setPurchaseTime(purchase.getPurchaseTime());
 
@@ -1019,6 +993,381 @@ public class ClientService {
         }
 
         return dto;
+    }
+
+    private Map<UUID, PaymentTransaction> loadLatestPayments(List<TicketPurchase> purchases) {
+        List<UUID> purchaseIds = purchases.stream().map(TicketPurchase::getId).toList();
+        if (purchaseIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return paymentTransactionRepository.findByTicketPurchaseIdInOrderByProcessedAtDesc(purchaseIds)
+            .stream()
+            .collect(Collectors.toMap(
+                payment -> payment.getTicketPurchase().getId(),
+                payment -> payment,
+                (left, right) -> left
+            ));
+    }
+
+    private boolean isProductApplicableToTransport(TicketProduct product, Transport transport) {
+        if (product == null || transport == null || Boolean.FALSE.equals(product.getActive())) {
+            return false;
+        }
+
+        String allowedTransportCode = normalizeToNull(product.getAllowedTransportCode());
+        return allowedTransportCode == null || allowedTransportCode.equalsIgnoreCase(transport.getCode());
+    }
+
+    private TransportFareProfile resolveFareProfile(Transport transport) {
+        if (transport == null || normalizeToNull(transport.getCode()) == null) {
+            throw new IllegalArgumentException("Transport code is required to calculate fare");
+        }
+
+        return transportFareProfileRepository.findByTransportCodeIgnoreCase(transport.getCode())
+            .orElseThrow(() -> new IllegalArgumentException("No fare profile configured for transport " + transport.getCode()));
+    }
+
+    private int determineSectionCount(RouteContext routeContext, TransportFareProfile fareProfile) {
+        if (PRICING_MODEL_TGM_SECTION_BOUNDARY.equalsIgnoreCase(fareProfile.getPricingModel())) {
+            Integer boundaryStopOrder = fareProfile.getSectionBoundaryStopOrder();
+            if (boundaryStopOrder == null) {
+                throw new IllegalArgumentException("Fare profile boundary is missing for transport " + routeContext.transport().getCode());
+            }
+
+            int fromSection = routeContext.fromStopOrder() <= boundaryStopOrder ? 1 : 2;
+            int toSection = routeContext.toStopOrder() <= boundaryStopOrder ? 1 : 2;
+            return fromSection == toSection ? 1 : 2;
+        }
+
+        int totalRouteSegments = Math.max(routeContext.totalRouteSegments(), 1);
+        return Math.max(1, (int) Math.ceil((double) routeContext.stopCount() * fareProfile.getMaxSections() / totalRouteSegments));
+    }
+
+    private TicketFareRule resolveFareRule(Transport transport, TicketProduct product, int sectionCount) {
+        String fareClass = normalizeFareClass(product != null ? product.getFareClass() : null);
+        List<TicketFareRule> transportSpecificRules = ticketFareRuleRepository
+            .findByTransportCodeIgnoreCaseAndFareClassIgnoreCaseOrderByMinSectionsAsc(transport.getCode(), fareClass);
+        TicketFareRule matchedRule = matchFareRule(transportSpecificRules, sectionCount);
+        if (matchedRule != null) {
+            return matchedRule;
+        }
+
+        if (transport.getType() == null) {
+            throw new IllegalArgumentException("Transport type is required to resolve fare rules");
+        }
+
+        List<TicketFareRule> genericRules = ticketFareRuleRepository
+            .findByTransportCodeIsNullAndTransportTypeIgnoreCaseAndFareClassIgnoreCaseOrderByMinSectionsAsc(
+                transport.getType().name(),
+                fareClass
+            );
+        matchedRule = matchFareRule(genericRules, sectionCount);
+        if (matchedRule != null) {
+            return matchedRule;
+        }
+
+        throw new IllegalArgumentException("No fare rule configured for transport " + transport.getCode());
+    }
+
+    private TicketFareRule matchFareRule(List<TicketFareRule> rules, int sectionCount) {
+        if (rules == null || rules.isEmpty()) {
+            return null;
+        }
+
+        return rules.stream()
+            .filter(rule -> sectionCount >= rule.getMinSections() && sectionCount <= rule.getMaxSections())
+            .findFirst()
+            .orElse(rules.get(rules.size() - 1));
+    }
+
+    private String normalizeFareClass(String fareClass) {
+        String normalized = normalizeToNull(fareClass);
+        return normalized == null ? FARE_CLASS_STANDARD : normalized.toUpperCase(Locale.ENGLISH);
+    }
+
+    private String resolveClientTicketStatus(String storedStatus, Instant validUntil) {
+        String normalizedStatus = normalizeToNull(storedStatus);
+        if (normalizedStatus == null) {
+            return "VALID";
+        }
+
+        String upperStatus = normalizedStatus.toUpperCase(Locale.ENGLISH);
+        if (TICKET_STATUS_ACTIVE.equals(upperStatus)) {
+            return validUntil != null && validUntil.isBefore(Instant.now()) ? "EXPIRED" : "VALID";
+        }
+        if (TICKET_STATUS_USED.equals(upperStatus)) {
+            return "USED";
+        }
+        if (TICKET_STATUS_CANCELLED.equals(upperStatus)) {
+            return "CANCELLED";
+        }
+        if ("EXPIRED".equals(upperStatus)) {
+            return "EXPIRED";
+        }
+        return upperStatus;
+    }
+
+    private List<ClientTransportDepartureDto> buildClientTransportDepartures(Transport transport, LocalDate date) {
+        List<TransportRouteStop> routeStops = loadVisibleRouteStops(transport.getId());
+        Map<Integer, List<LocalTime>> departureTimesByStopOrder = buildEstimatedDepartureTimesByStopOrder(transport, routeStops, date);
+        if (departureTimesByStopOrder.isEmpty()) {
+            return List.of();
+        }
+
+        List<ClientTransportDepartureDto> departures = new ArrayList<>();
+        for (TransportRouteStop routeStop : routeStops) {
+            for (LocalTime departureTime : departureTimesByStopOrder.getOrDefault(routeStop.getStopOrder(), List.of())) {
+                ClientTransportDepartureDto dto = new ClientTransportDepartureDto();
+                dto.setId(transport.getId() + ":" + routeStop.getStopOrder() + ":" + departureTime);
+                dto.setStopId(routeStop.getStop().getId().toString());
+                dto.setStopName(routeStop.getStop().getStopName());
+                dto.setStopOrder(routeStop.getStopOrder());
+                dto.setDepartureTime(departureTime);
+                dto.setActive(true);
+                departures.add(dto);
+            }
+        }
+
+        return departures.stream()
+            .sorted(Comparator.comparing(ClientTransportDepartureDto::getStopOrder)
+                .thenComparing(ClientTransportDepartureDto::getDepartureTime))
+            .toList();
+    }
+
+    private List<DepartureWindow> resolveDepartureWindows(RouteContext routeContext, LocalDate serviceDate) {
+        List<TransportRouteStop> routeStops = loadVisibleRouteStops(routeContext.transport().getId());
+        Map<Integer, List<LocalTime>> departureTimesByStopOrder = buildEstimatedDepartureTimesByStopOrder(
+            routeContext.transport(),
+            routeStops,
+            serviceDate
+        );
+
+        List<LocalTime> fromTimes = departureTimesByStopOrder.get(routeContext.fromStopOrder());
+        if (fromTimes == null || fromTimes.isEmpty()) {
+            throw new TicketEligibilityException("No scheduled departure at selected boarding stop for today");
+        }
+
+        List<LocalTime> toTimes = departureTimesByStopOrder.get(routeContext.toStopOrder());
+        if (toTimes == null || toTimes.isEmpty()) {
+            throw new TicketEligibilityException("No scheduled departure at selected destination stop for today");
+        }
+
+        List<DepartureWindow> windows = new ArrayList<>();
+        int pairCount = Math.min(fromTimes.size(), toTimes.size());
+        for (int index = 0; index < pairCount; index++) {
+            LocalTime fromTime = fromTimes.get(index);
+            LocalTime toTime = toTimes.get(index);
+            if (!toTime.isBefore(fromTime)) {
+                windows.add(new DepartureWindow(fromTime, toTime));
+            }
+        }
+        return windows;
+    }
+
+    private Map<Integer, List<LocalTime>> buildEstimatedDepartureTimesByStopOrder(Transport transport,
+                                                                                  List<TransportRouteStop> routeStops,
+                                                                                  LocalDate serviceDate) {
+        List<TransportDepartureSlot> daySlots = loadScheduleSlots(transport.getId(), serviceDate);
+        if (routeStops.isEmpty() || daySlots.isEmpty()) {
+            return Map.of();
+        }
+
+        int originStopOrder = daySlots.stream()
+            .map(TransportDepartureSlot::getStopOrder)
+            .filter(stopOrder -> stopOrder != null)
+            .min(Integer::compareTo)
+            .orElseThrow(() -> new TicketEligibilityException("No schedule template is configured for this transport"));
+
+        List<LocalTime> originDepartureTimes = daySlots.stream()
+            .filter(slot -> slot.getStopOrder() != null && slot.getStopOrder().equals(originStopOrder))
+            .map(TransportDepartureSlot::getDepartureTime)
+            .sorted()
+            .toList();
+
+        if (originDepartureTimes.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Integer, Long> estimatedOffsets = buildEstimatedStopOffsets(transport, routeStops, daySlots, originStopOrder);
+        Map<Integer, List<LocalTime>> departureTimesByStopOrder = new LinkedHashMap<>();
+        for (TransportRouteStop routeStop : routeStops) {
+            long offsetMinutes = estimatedOffsets.getOrDefault(routeStop.getStopOrder(), 0L);
+            List<LocalTime> estimatedTimes = originDepartureTimes.stream()
+                .map(originTime -> addMinutesSafely(originTime, offsetMinutes))
+                .sorted()
+                .toList();
+            departureTimesByStopOrder.put(routeStop.getStopOrder(), estimatedTimes);
+        }
+
+        return departureTimesByStopOrder;
+    }
+
+    private Map<Integer, Long> buildEstimatedStopOffsets(Transport transport,
+                                                         List<TransportRouteStop> routeStops,
+                                                         List<TransportDepartureSlot> daySlots,
+                                                         int originStopOrder) {
+        List<LocalTime> originDepartureTimes = daySlots.stream()
+            .filter(slot -> slot.getStopOrder() != null && slot.getStopOrder().equals(originStopOrder))
+            .map(TransportDepartureSlot::getDepartureTime)
+            .sorted()
+            .toList();
+
+        TreeMap<Integer, Double> anchorOffsets = new TreeMap<>();
+        anchorOffsets.put(originStopOrder, 0d);
+
+        Map<Integer, List<LocalTime>> slotTimesByOrder = daySlots.stream()
+            .collect(Collectors.groupingBy(
+                TransportDepartureSlot::getStopOrder,
+                TreeMap::new,
+                Collectors.mapping(TransportDepartureSlot::getDepartureTime, Collectors.toList())
+            ));
+
+        slotTimesByOrder.forEach((stopOrder, departureTimes) -> {
+            if (stopOrder == null || stopOrder.equals(originStopOrder)) {
+                return;
+            }
+
+            Double averageOffset = averageOffsetMinutesFromOrigin(originDepartureTimes, departureTimes);
+            if (averageOffset != null && averageOffset > 0) {
+                anchorOffsets.put(stopOrder, averageOffset);
+            }
+        });
+
+        double minutesPerStop = resolveMinutesPerStop(transport, anchorOffsets);
+        if (anchorOffsets.size() == 1 && !routeStops.isEmpty()) {
+            int lastStopOrder = routeStops.get(routeStops.size() - 1).getStopOrder();
+            anchorOffsets.put(lastStopOrder, Math.max(1, lastStopOrder - originStopOrder) * minutesPerStop);
+        }
+
+        Map<Integer, Long> offsets = new LinkedHashMap<>();
+        for (TransportRouteStop routeStop : routeStops) {
+            offsets.put(routeStop.getStopOrder(), Math.round(estimateStopOffsetMinutes(routeStop.getStopOrder(), anchorOffsets, minutesPerStop)));
+        }
+        return offsets;
+    }
+
+    private Double averageOffsetMinutesFromOrigin(List<LocalTime> originDepartureTimes, List<LocalTime> departureTimes) {
+        if (originDepartureTimes.isEmpty() || departureTimes == null || departureTimes.isEmpty()) {
+            return null;
+        }
+
+        List<Long> offsets = new ArrayList<>();
+        int originIndex = 0;
+        List<LocalTime> sortedDepartureTimes = departureTimes.stream().sorted().toList();
+        for (LocalTime departureTime : sortedDepartureTimes) {
+            while (originIndex + 1 < originDepartureTimes.size()
+                && !originDepartureTimes.get(originIndex + 1).isAfter(departureTime)) {
+                originIndex++;
+            }
+
+            LocalTime originTime = originDepartureTimes.get(originIndex);
+            if (departureTime.isAfter(originTime)) {
+                offsets.add(ChronoUnit.MINUTES.between(originTime, departureTime));
+            }
+        }
+
+        if (offsets.isEmpty()) {
+            return null;
+        }
+
+        return offsets.stream().mapToLong(Long::longValue).average().orElse(0d);
+    }
+
+    private double estimateStopOffsetMinutes(int stopOrder, TreeMap<Integer, Double> anchorOffsets, double minutesPerStop) {
+        Double exactOffset = anchorOffsets.get(stopOrder);
+        if (exactOffset != null) {
+            return exactOffset;
+        }
+
+        Map.Entry<Integer, Double> lowerAnchor = anchorOffsets.floorEntry(stopOrder);
+        Map.Entry<Integer, Double> upperAnchor = anchorOffsets.ceilingEntry(stopOrder);
+        if (lowerAnchor != null && upperAnchor != null && !lowerAnchor.getKey().equals(upperAnchor.getKey())) {
+            double progress = (double) (stopOrder - lowerAnchor.getKey()) / (double) (upperAnchor.getKey() - lowerAnchor.getKey());
+            return lowerAnchor.getValue() + ((upperAnchor.getValue() - lowerAnchor.getValue()) * progress);
+        }
+
+        if (lowerAnchor != null) {
+            double trailingSlope = resolveTrailingSlope(anchorOffsets, minutesPerStop);
+            return lowerAnchor.getValue() + ((stopOrder - lowerAnchor.getKey()) * trailingSlope);
+        }
+
+        if (upperAnchor != null) {
+            return Math.max(0d, upperAnchor.getValue() - ((upperAnchor.getKey() - stopOrder) * minutesPerStop));
+        }
+
+        return 0d;
+    }
+
+    private double resolveTrailingSlope(TreeMap<Integer, Double> anchorOffsets, double fallbackMinutesPerStop) {
+        if (anchorOffsets.size() < 2) {
+            return fallbackMinutesPerStop;
+        }
+
+        Map.Entry<Integer, Double> lastAnchor = anchorOffsets.lastEntry();
+        Map.Entry<Integer, Double> previousAnchor = anchorOffsets.lowerEntry(lastAnchor.getKey());
+        if (previousAnchor == null || lastAnchor.getKey().equals(previousAnchor.getKey())) {
+            return fallbackMinutesPerStop;
+        }
+
+        double slope = (lastAnchor.getValue() - previousAnchor.getValue()) / (lastAnchor.getKey() - previousAnchor.getKey());
+        return slope > 0 ? slope : fallbackMinutesPerStop;
+    }
+
+    private double resolveMinutesPerStop(Transport transport, TreeMap<Integer, Double> anchorOffsets) {
+        if (anchorOffsets.size() >= 2) {
+            Map.Entry<Integer, Double> firstAnchor = anchorOffsets.firstEntry();
+            Map.Entry<Integer, Double> lastAnchor = anchorOffsets.lastEntry();
+            if (!firstAnchor.getKey().equals(lastAnchor.getKey())) {
+                double averageMinutesPerStop = (lastAnchor.getValue() - firstAnchor.getValue())
+                    / (lastAnchor.getKey() - firstAnchor.getKey());
+                if (averageMinutesPerStop > 0) {
+                    return averageMinutesPerStop;
+                }
+            }
+        }
+
+        if ("TGM".equalsIgnoreCase(transport.getCode())) {
+            return DEFAULT_TGM_MINUTES_PER_STOP;
+        }
+        if (transport.getType() == null) {
+            return DEFAULT_BUS_MINUTES_PER_STOP;
+        }
+
+        return switch (transport.getType()) {
+            case METRO -> DEFAULT_METRO_MINUTES_PER_STOP;
+            case TRAIN -> DEFAULT_TRAIN_MINUTES_PER_STOP;
+            case BUS -> DEFAULT_BUS_MINUTES_PER_STOP;
+        };
+    }
+
+    private List<TransportDepartureSlot> loadScheduleSlots(UUID transportId, LocalDate serviceDate) {
+        String scheduleTemplateDay = resolveScheduleTemplateDay(serviceDate);
+        return transportDepartureSlotRepository
+            .findByTransportIdAndDayOfWeekIgnoreCaseOrderByStopOrderAscDepartureTimeAsc(transportId, scheduleTemplateDay)
+            .stream()
+            .filter(this::isClientVisibleDeparture)
+            .toList();
+    }
+
+    private List<TransportRouteStop> loadVisibleRouteStops(UUID transportId) {
+        return transportRouteStopRepository.findByTransportIdOrderByStopOrderAsc(transportId).stream()
+            .filter(this::isClientVisibleRouteStop)
+            .toList();
+    }
+
+    private String resolveScheduleTemplateDay(LocalDate serviceDate) {
+        DayOfWeek dayOfWeek = serviceDate.getDayOfWeek();
+        return switch (dayOfWeek) {
+            case SATURDAY -> "Saturday";
+            case SUNDAY -> "Sunday";
+            default -> "Monday";
+        };
+    }
+
+    private LocalTime addMinutesSafely(LocalTime time, long minutes) {
+        long normalizedMinutes = Math.max(0L, minutes);
+        return time.plusMinutes(normalizedMinutes);
     }
 
     private Pageable buildTicketPageable(int page, int size, String sortExpression) {
@@ -1324,7 +1673,11 @@ public class ClientService {
                                 TransportStop toStop,
                                 int fromStopOrder,
                                 int toStopOrder,
-                                int stopCount) {
+                                int stopCount,
+                                int totalRouteSegments) {
+    }
+
+    private record DepartureWindow(LocalTime fromTime, LocalTime toTime) {
     }
 
     private static final class TicketEligibilityException extends IllegalArgumentException {

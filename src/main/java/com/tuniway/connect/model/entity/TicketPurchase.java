@@ -41,6 +41,12 @@ public class TicketPurchase {
     @Column(name = "stop_count")
     private Integer stopCount;
 
+    @Column(name = "from_stop_order")
+    private Integer fromStopOrder;
+
+    @Column(name = "to_stop_order")
+    private Integer toStopOrder;
+
     @Column(nullable = false)
     private String status;
 
@@ -112,6 +118,22 @@ public class TicketPurchase {
 
     public void setStopCount(Integer stopCount) {
         this.stopCount = stopCount;
+    }
+
+    public Integer getFromStopOrder() {
+        return fromStopOrder;
+    }
+
+    public void setFromStopOrder(Integer fromStopOrder) {
+        this.fromStopOrder = fromStopOrder;
+    }
+
+    public Integer getToStopOrder() {
+        return toStopOrder;
+    }
+
+    public void setToStopOrder(Integer toStopOrder) {
+        this.toStopOrder = toStopOrder;
     }
 
     public Instant getValidUntil() {

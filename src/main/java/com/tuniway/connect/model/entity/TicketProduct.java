@@ -25,11 +25,20 @@ public class TicketProduct {
     @Column(nullable = false)
     private BigDecimal price;
 
+    @Column(name = "product_code")
+    private String productCode;
+
     @Column(name = "valid_duration_minutes", nullable = false)
     private Integer validDurationMinutes;
 
     @Column(nullable = false)
     private Boolean active;
+
+    @Column(name = "fare_class", nullable = false)
+    private String fareClass;
+
+    @Column(name = "allowed_transport_code")
+    private String allowedTransportCode;
 
     public UUID getId() {
         return id;
@@ -77,5 +86,29 @@ public class TicketProduct {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+    public String getProductCode() {
+        return productCode;
+    }
+
+    public void setProductCode(String productCode) {
+        this.productCode = productCode;
+    }
+
+    public String getFareClass() {
+        return fareClass;
+    }
+
+    public void setFareClass(String fareClass) {
+        this.fareClass = fareClass;
+    }
+
+    public String getAllowedTransportCode() {
+        return allowedTransportCode;
+    }
+
+    public void setAllowedTransportCode(String allowedTransportCode) {
+        this.allowedTransportCode = allowedTransportCode;
     }
 }
