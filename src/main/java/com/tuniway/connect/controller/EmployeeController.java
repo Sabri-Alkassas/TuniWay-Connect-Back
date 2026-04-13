@@ -1,6 +1,8 @@
 package com.tuniway.connect.controller;
 
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
+import com.tuniway.connect.model.dto.EmployeeLocationUpdateRequest;
+import com.tuniway.connect.model.dto.EmployeeShiftLocationResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftProgressResponse;
@@ -78,6 +80,24 @@ public class EmployeeController {
             }}, HttpStatus.BAD_REQUEST);
         }
     }   
+
+    @PreAuthorize("hasRole('EMPLOYEE')")
+    @PostMapping("/shifts/{id}/location")
+    public ResponseEntity<EmployeeShiftLocationResponse> updateShiftLocation(@PathVariable("id") UUID shiftId,
+                                                                             @RequestBody(required = false) EmployeeLocationUpdateRequest request,
+                                                                             Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            EmployeeShiftLocationResponse response = employeeService.updateShiftLocation(user, shiftId, request);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            EmployeeShiftLocationResponse errorResponse = new EmployeeShiftLocationResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            errorResponse.setShiftId(shiftId);
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
   
     @PreAuthorize("hasRole('EMPLOYEE')")
     @GetMapping("/shifts/{id}/stops")

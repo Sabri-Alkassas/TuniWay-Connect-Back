@@ -1,5 +1,6 @@
 package com.tuniway.connect.model.dto;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -14,6 +15,9 @@ public class EmployeeShiftProgressResponse {
     private Integer totalStops;
     private ProgressStopDto nextStop;
     private Long delayMinutes;
+    private BigDecimal currentLatitude;
+    private BigDecimal currentLongitude;
+    private Instant currentLocationUpdatedAt;
 
     public static class ProgressStopDto {
         private String stopId;
@@ -151,5 +155,29 @@ public class EmployeeShiftProgressResponse {
 
     public void setDelayMinutes(Long delayMinutes) {
         this.delayMinutes = delayMinutes;
+    }
+
+    public BigDecimal getCurrentLatitude() {
+        return currentLatitude;
+    }
+
+    public void setCurrentLatitude(BigDecimal currentLatitude) {
+        this.currentLatitude = currentLatitude;
+    }
+
+    public BigDecimal getCurrentLongitude() {
+        return currentLongitude;
+    }
+
+    public void setCurrentLongitude(BigDecimal currentLongitude) {
+        this.currentLongitude = currentLongitude;
+    }
+
+    public Instant getCurrentLocationUpdatedAt() {
+        return currentLocationUpdatedAt;
+    }
+
+    public void setCurrentLocationUpdatedAt(Instant currentLocationUpdatedAt) {
+        this.currentLocationUpdatedAt = currentLocationUpdatedAt;
     }
 }

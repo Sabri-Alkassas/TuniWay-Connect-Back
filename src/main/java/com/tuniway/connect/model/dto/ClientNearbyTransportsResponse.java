@@ -1,5 +1,7 @@
 package com.tuniway.connect.model.dto;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 public class ClientNearbyTransportsResponse {
@@ -63,6 +65,10 @@ public class ClientNearbyTransportsResponse {
         private ClientTransportStopDto nearestStop;
         private double distanceMeters;
         private int matchingStopCount;
+        private BigDecimal markerLatitude;
+        private BigDecimal markerLongitude;
+        private Instant locationUpdatedAt;
+        private String locationSource;
 
         public ClientTransportDto getTransport() {
             return transport;
@@ -94,6 +100,38 @@ public class ClientNearbyTransportsResponse {
 
         public void setMatchingStopCount(int matchingStopCount) {
             this.matchingStopCount = matchingStopCount;
+        }
+
+        public BigDecimal getMarkerLatitude() {
+            return markerLatitude;
+        }
+
+        public void setMarkerLatitude(BigDecimal markerLatitude) {
+            this.markerLatitude = markerLatitude;
+        }
+
+        public BigDecimal getMarkerLongitude() {
+            return markerLongitude;
+        }
+
+        public void setMarkerLongitude(BigDecimal markerLongitude) {
+            this.markerLongitude = markerLongitude;
+        }
+
+        public Instant getLocationUpdatedAt() {
+            return locationUpdatedAt;
+        }
+
+        public void setLocationUpdatedAt(Instant locationUpdatedAt) {
+            this.locationUpdatedAt = locationUpdatedAt;
+        }
+
+        public String getLocationSource() {
+            return locationSource;
+        }
+
+        public void setLocationSource(String locationSource) {
+            this.locationSource = locationSource;
         }
     }
 }

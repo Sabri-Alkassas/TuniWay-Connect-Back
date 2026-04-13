@@ -1,21 +1,25 @@
 package com.tuniway.connect.service;
 
+import com.tuniway.connect.model.dto.EmployeeLocationUpdateRequest;
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
+import com.tuniway.connect.model.dto.EmployeeShiftLocationResponse;
 import com.tuniway.connect.model.dto.ShiftStartRequest;
 import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.dto.ShiftEndResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
+import com.tuniway.connect.model.dto.EmployeeShiftProgressResponse;
 import com.tuniway.connect.model.entity.ShiftStopEvent;
 import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.model.entity.WorkShift;
 import com.tuniway.connect.repository.ShiftStopEventRepository;
 import com.tuniway.connect.repository.WorkShiftRepository;
+import java.math.BigDecimal;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.tuniway.connect.model.dto.EmployeeShiftProgressResponse;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -83,11 +87,14 @@ public class EmployeeService {
         if (shift.getActualStart() == null) {
             shift.setActualStart(Instant.now());
         }
+        shift.setCurrentLatitude(null);
+        shift.setCurrentLongitude(null);
+        shift.setCurrentLocationUpdatedAt(null);
         shift.setStatus("IN_PROGRESS");
         WorkShift saved = workShiftRepository.save(shift);
         publishShiftProgressToEmployee(user, shiftId);
       
-        return buildShiftStartResponse(saved, true, "Shift started at " + saved.getActualEnd() + " successfully");
+        return buildShiftStartResponse(saved, true, "Shift started at " + saved.getActualStart() + " successfully");
     }
 
     public ShiftEndResponse endShift(UUID shiftId, User user) {
@@ -98,8 +105,22 @@ public class EmployeeService {
             throw new RuntimeException("You are not assigned to this shift");
         }
 
+        String status = normalizeShiftStatus(shift.getStatus());
+        if ("COMPLETED".equals(status)) {
+            ShiftEndResponse response = new ShiftEndResponse();
+            response.setSuccess(true);
+            response.setMessage("Shift already ended");
+            response.setShiftId(shift.getId());
+            response.setStatus(shift.getStatus());
+            response.setActualEnd(shift.getActualEnd());
+            return response;
+        }
+
         if (shift.getActualStart() == null) {
             throw new RuntimeException("Cannot end a shift that has not been started");
+        }
+        if (!"IN_PROGRESS".equals(status)) {
+            throw new RuntimeException("Shift cannot be ended from status: " + status);
         }
 
         shift.setActualEnd(java.time.Instant.now());
@@ -113,6 +134,40 @@ public class EmployeeService {
         response.setShiftId(shift.getId());
         response.setStatus(shift.getStatus());
         response.setActualEnd(shift.getActualEnd());
+        return response;
+    }
+
+    @Transactional
+    public EmployeeShiftLocationResponse updateShiftLocation(User user, UUID shiftId, EmployeeLocationUpdateRequest request) {
+        if (request == null) {
+            throw new RuntimeException("Location request body is required");
+        }
+        if (request.getLatitude() == null || request.getLongitude() == null) {
+            throw new RuntimeException("Both latitude and longitude are required");
+        }
+
+        validateLocationCoordinates(request.getLatitude(), request.getLongitude());
+
+        WorkShift shift = requireOwnedShift(user.getId(), shiftId);
+        if (!"IN_PROGRESS".equals(normalizeShiftStatus(shift.getStatus()))) {
+            throw new RuntimeException("Shift location can only be updated while the shift is in progress");
+        }
+
+        Instant now = Instant.now();
+        shift.setCurrentLatitude(request.getLatitude());
+        shift.setCurrentLongitude(request.getLongitude());
+        shift.setCurrentLocationUpdatedAt(now);
+        WorkShift saved = workShiftRepository.save(shift);
+        publishShiftProgressToEmployee(user, shiftId);
+
+        EmployeeShiftLocationResponse response = new EmployeeShiftLocationResponse();
+        response.setSuccess(true);
+        response.setMessage("Shift location updated successfully");
+        response.setShiftId(saved.getId());
+        response.setTransportId(saved.getTransport() != null ? saved.getTransport().getId() : null);
+        response.setLatitude(saved.getCurrentLatitude());
+        response.setLongitude(saved.getCurrentLongitude());
+        response.setUpdatedAt(saved.getCurrentLocationUpdatedAt());
         return response;
     }
 
@@ -133,7 +188,8 @@ public class EmployeeService {
 
     @Transactional
     public EmployeeStopActionResponse arriveAtStop(User user, UUID shiftId, UUID stopId) {
-        requireOwnedShift(user.getId(), shiftId);
+        WorkShift shift = requireOwnedShift(user.getId(), shiftId);
+        ensureShiftInProgress(shift);
         ShiftStopEvent event = requireShiftStopEvent(shiftId, stopId);
         String status = normalizeStatus(event.getStatus());
         validateKnownStatus(status);
@@ -172,7 +228,8 @@ public class EmployeeService {
 
     @Transactional
     public EmployeeStopActionResponse departFromStop(User user, UUID shiftId, UUID stopId) {
-        requireOwnedShift(user.getId(), shiftId);
+        WorkShift shift = requireOwnedShift(user.getId(), shiftId);
+        ensureShiftInProgress(shift);
         ShiftStopEvent event = requireShiftStopEvent(shiftId, stopId);
 
         String status = normalizeStatus(event.getStatus());
@@ -228,9 +285,25 @@ public class EmployeeService {
         return status == null ? "SCHEDULED" : status.trim().toUpperCase();
     }
 
+    private void ensureShiftInProgress(WorkShift shift) {
+        String status = normalizeShiftStatus(shift.getStatus());
+        if (!"IN_PROGRESS".equals(status)) {
+            throw new RuntimeException("Shift must be in progress for this action. Current status: " + status);
+        }
+    }
+
     private void validateKnownStatus(String status) {
         if (!ALLOWED_STATUSES.contains(status)) {
             throw new RuntimeException("Unsupported stop status: " + status);
+        }
+    }
+
+    private void validateLocationCoordinates(BigDecimal latitude, BigDecimal longitude) {
+        if (latitude.compareTo(BigDecimal.valueOf(-90)) < 0 || latitude.compareTo(BigDecimal.valueOf(90)) > 0) {
+            throw new RuntimeException("Latitude must be between -90 and 90");
+        }
+        if (longitude.compareTo(BigDecimal.valueOf(-180)) < 0 || longitude.compareTo(BigDecimal.valueOf(180)) > 0) {
+            throw new RuntimeException("Longitude must be between -180 and 180");
         }
     }
 
@@ -333,6 +406,9 @@ public class EmployeeService {
         response.setTotalStops(allStops.size());
         response.setNextStop(nextStop);
         response.setDelayMinutes(calculateDelayMinutes(shift, currentStop, nextStop));
+        response.setCurrentLatitude(shift.getCurrentLatitude());
+        response.setCurrentLongitude(shift.getCurrentLongitude());
+        response.setCurrentLocationUpdatedAt(shift.getCurrentLocationUpdatedAt());
 
         return response;
     }

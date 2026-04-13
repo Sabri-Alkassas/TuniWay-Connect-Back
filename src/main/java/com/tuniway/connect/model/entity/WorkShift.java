@@ -1,6 +1,7 @@
 package com.tuniway.connect.model.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -32,6 +33,15 @@ public class WorkShift {
 
     @Column(name = "actual_end")
     private Instant actualEnd;
+
+    @Column(name = "current_latitude", precision = 9, scale = 6)
+    private BigDecimal currentLatitude;
+
+    @Column(name = "current_longitude", precision = 9, scale = 6)
+    private BigDecimal currentLongitude;
+
+    @Column(name = "current_location_updated_at")
+    private Instant currentLocationUpdatedAt;
 
     public WorkShift() {
     }
@@ -110,5 +120,29 @@ public class WorkShift {
 
     public void setActualEnd(Instant actualEnd) {
         this.actualEnd = actualEnd;
+    }
+
+    public BigDecimal getCurrentLatitude() {
+        return currentLatitude;
+    }
+
+    public void setCurrentLatitude(BigDecimal currentLatitude) {
+        this.currentLatitude = currentLatitude;
+    }
+
+    public BigDecimal getCurrentLongitude() {
+        return currentLongitude;
+    }
+
+    public void setCurrentLongitude(BigDecimal currentLongitude) {
+        this.currentLongitude = currentLongitude;
+    }
+
+    public Instant getCurrentLocationUpdatedAt() {
+        return currentLocationUpdatedAt;
+    }
+
+    public void setCurrentLocationUpdatedAt(Instant currentLocationUpdatedAt) {
+        this.currentLocationUpdatedAt = currentLocationUpdatedAt;
     }
 }

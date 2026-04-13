@@ -5,12 +5,21 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalTime;
 
 public class ClientTransportDepartureDto {
+    private String id;
     private String stopId;
     private String stopName;
     private Integer stopOrder;
     @JsonFormat(pattern = "HH:mm[:ss]")
     private LocalTime departureTime;
     private Boolean active;
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
 
     public String getStopId() {
         return stopId;

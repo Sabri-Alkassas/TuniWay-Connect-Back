@@ -31,6 +31,7 @@ import com.tuniway.connect.model.entity.TransportRouteStop;
 import com.tuniway.connect.model.entity.TransportStop;
 import com.tuniway.connect.model.entity.TransportType;
 import com.tuniway.connect.model.entity.User;
+import com.tuniway.connect.model.entity.WorkShift;
 import com.tuniway.connect.repository.ClientProfileRepository;
 import com.tuniway.connect.repository.EmailVerificationCodeRepository;
 import com.tuniway.connect.repository.PaymentTransactionRepository;
@@ -42,6 +43,7 @@ import com.tuniway.connect.repository.TransportDepartureSlotRepository;
 import com.tuniway.connect.repository.TransportRepository;
 import com.tuniway.connect.repository.TransportRouteStopRepository;
 import com.tuniway.connect.repository.UserRepository;
+import com.tuniway.connect.repository.WorkShiftRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -74,6 +76,7 @@ public class ClientService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
     private static final int DEFAULT_RADIUS_METERS = 500;
+    private static final long LIVE_LOCATION_STALE_MINUTES = 10;
     private static final int MAX_DEPARTURE_DELAY_TOLERANCE_MINUTES = 5;
     private static final String DEFAULT_SORT = "name,asc";
     private static final String WORK_SHIFT_STATUS_IN_PROGRESS = "IN_PROGRESS";
@@ -93,6 +96,7 @@ public class ClientService {
     private final TicketPurchaseRepository ticketPurchaseRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final ShiftStopEventRepository shiftStopEventRepository;
+    private final WorkShiftRepository workShiftRepository;
 
     public ClientService(
         UserRepository userRepository,
@@ -105,7 +109,8 @@ public class ClientService {
         TicketProductRepository ticketProductRepository,
         TicketPurchaseRepository ticketPurchaseRepository,
         PaymentTransactionRepository paymentTransactionRepository,
-        ShiftStopEventRepository shiftStopEventRepository
+        ShiftStopEventRepository shiftStopEventRepository,
+        WorkShiftRepository workShiftRepository
     ) {
         this.userRepository = userRepository;
         this.clientProfileRepository = clientProfileRepository;
@@ -118,6 +123,7 @@ public class ClientService {
         this.ticketPurchaseRepository = ticketPurchaseRepository;
         this.paymentTransactionRepository = paymentTransactionRepository;
         this.shiftStopEventRepository = shiftStopEventRepository;
+        this.workShiftRepository = workShiftRepository;
     }
 
     public ClientDashboardResponse getDashboard(UUID clientId) {
@@ -533,6 +539,7 @@ public class ClientService {
             }
         }
 
+        Map<UUID, LiveLocationSnapshot> liveLocations = loadActiveLocationSnapshots(nearbyCandidates.keySet());
         Map<UUID, Long> stopCounts = loadVisibleStopCounts(nearbyCandidates.keySet());
         Map<UUID, Long> departureCounts = loadVisibleDepartureCounts(nearbyCandidates.keySet());
 
@@ -544,9 +551,21 @@ public class ClientService {
                 ClientNearbyTransportsResponse.NearbyTransportDto dto =
                     new ClientNearbyTransportsResponse.NearbyTransportDto();
                 dto.setTransport(toTransportDto(candidate.transport(), false, stopCounts, departureCounts));
-                dto.setNearestStop(toTransportStopDto(candidate.nearestStop()));
+                ClientTransportStopDto nearestStop = toTransportStopDto(candidate.nearestStop());
+                dto.setNearestStop(nearestStop);
                 dto.setDistanceMeters(roundDistance(candidate.distanceMeters()));
                 dto.setMatchingStopCount(candidate.matchCount());
+                LiveLocationSnapshot liveLocation = liveLocations.get(candidate.transport().getId());
+                if (liveLocation != null) {
+                    dto.setMarkerLatitude(liveLocation.latitude());
+                    dto.setMarkerLongitude(liveLocation.longitude());
+                    dto.setLocationUpdatedAt(liveLocation.updatedAt());
+                    dto.setLocationSource("LIVE");
+                } else if (nearestStop != null) {
+                    dto.setMarkerLatitude(nearestStop.getLatitude());
+                    dto.setMarkerLongitude(nearestStop.getLongitude());
+                    dto.setLocationSource("STOP");
+                }
                 return dto;
             })
             .toList();
@@ -704,11 +723,12 @@ public class ClientService {
             return null;
         }
 
-        try {
-            return TransportType.valueOf(normalized.toUpperCase(Locale.ENGLISH));
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid transport type. Allowed values are: BUS, TRAIN, METRO");
+        TransportType transportType = TransportType.fromExternalValue(normalized);
+        if (transportType != null) {
+            return transportType;
         }
+
+        throw new IllegalArgumentException("Invalid transport type. Allowed values are: BUS, TRAIN, METRO");
     }
 
     private ClientAccountResponse buildAccountResponse(User user, ClientProfile profile, String message) {
@@ -1079,6 +1099,7 @@ public class ClientService {
 
     private ClientTransportDepartureDto toTransportDepartureDto(TransportDepartureSlot slot) {
         ClientTransportDepartureDto dto = new ClientTransportDepartureDto();
+        dto.setId(slot.getId().toString());
         dto.setStopId(slot.getStop().getId().toString());
         dto.setStopName(slot.getStop().getStopName());
         dto.setStopOrder(slot.getStopOrder());
@@ -1148,6 +1169,39 @@ public class ClientService {
 
     private double roundDistance(double distanceMeters) {
         return Math.round(distanceMeters * 100.0d) / 100.0d;
+    }
+
+    private Map<UUID, LiveLocationSnapshot> loadActiveLocationSnapshots(Iterable<UUID> transportIds) {
+        List<UUID> ids = new ArrayList<>();
+        transportIds.forEach(ids::add);
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+
+        Instant freshnessThreshold = Instant.now().minus(LIVE_LOCATION_STALE_MINUTES, ChronoUnit.MINUTES);
+        Map<UUID, LiveLocationSnapshot> snapshots = new HashMap<>();
+
+        for (WorkShift shift : workShiftRepository.findLocatedByTransportIdsAndStatus(ids, WORK_SHIFT_STATUS_IN_PROGRESS)) {
+            if (shift.getTransport() == null
+                || shift.getTransport().getId() == null
+                || shift.getCurrentLatitude() == null
+                || shift.getCurrentLongitude() == null
+                || shift.getCurrentLocationUpdatedAt() == null
+                || shift.getCurrentLocationUpdatedAt().isBefore(freshnessThreshold)) {
+                continue;
+            }
+
+            snapshots.putIfAbsent(
+                shift.getTransport().getId(),
+                new LiveLocationSnapshot(
+                    shift.getCurrentLatitude(),
+                    shift.getCurrentLongitude(),
+                    shift.getCurrentLocationUpdatedAt()
+                )
+            );
+        }
+
+        return snapshots;
     }
 
     private String buildDisplayName(ClientProfile profile) {
@@ -1260,6 +1314,9 @@ public class ClientService {
     }
 
     private record BoundingBox(double minLatitude, double maxLatitude, double minLongitude, double maxLongitude) {
+    }
+
+    private record LiveLocationSnapshot(BigDecimal latitude, BigDecimal longitude, Instant updatedAt) {
     }
 
     private record RouteContext(Transport transport,
