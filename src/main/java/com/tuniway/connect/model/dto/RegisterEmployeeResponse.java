@@ -17,6 +17,9 @@ public class RegisterEmployeeResponse {
     private String license_number;
     private String employee_code;
     private String admin_code;
+    private Boolean twoFactorEnabled;
+    private String twoFactorSecret;
+    private String twoFactorSetupUri;
     
     public UUID getId() {
         return id;
@@ -96,6 +99,30 @@ public class RegisterEmployeeResponse {
 
     public void setAdmin_code(String admin_code) {
         this.admin_code = admin_code;
+    }
+
+    public Boolean getTwoFactorEnabled() {
+        return twoFactorEnabled;
+    }
+
+    public void setTwoFactorEnabled(Boolean twoFactorEnabled) {
+        this.twoFactorEnabled = twoFactorEnabled;
+    }
+
+    public String getTwoFactorSecret() {
+        return twoFactorSecret;
+    }
+
+    public void setTwoFactorSecret(String twoFactorSecret) {
+        this.twoFactorSecret = twoFactorSecret;
+    }
+
+    public String getTwoFactorSetupUri() {
+        return twoFactorSetupUri;
+    }
+
+    public void setTwoFactorSetupUri(String twoFactorSetupUri) {
+        this.twoFactorSetupUri = twoFactorSetupUri;
     }
 
     private boolean success;

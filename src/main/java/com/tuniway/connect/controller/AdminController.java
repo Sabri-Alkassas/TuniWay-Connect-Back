@@ -2,6 +2,7 @@ package com.tuniway.connect.controller;
 
 import com.tuniway.connect.model.dto.AdminDashboardResponse;
 import com.tuniway.connect.model.dto.AdminShiftResponse;
+import com.tuniway.connect.model.dto.CreateShiftRequest;
 import com.tuniway.connect.model.dto.CreateTransportRequest;
 import com.tuniway.connect.model.dto.PlanningPublishRequest;
 import com.tuniway.connect.model.dto.PlanningPublishResponse;
@@ -70,6 +71,20 @@ public class AdminController {
     @GetMapping("/shifts")
     public ResponseEntity<java.util.List<AdminShiftResponse>> listShifts() {
         return new ResponseEntity<>(adminService.listShifts(), HttpStatus.OK);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/shifts")
+    public ResponseEntity<AdminShiftResponse> createShift(@RequestBody CreateShiftRequest request) {
+        try {
+            AdminShiftResponse response = adminService.createShift(request);
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (RuntimeException e) {
+            AdminShiftResponse errorResponse = new AdminShiftResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
     }
 
     @PreAuthorize("hasRole('ADMIN')")

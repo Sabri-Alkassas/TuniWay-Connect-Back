@@ -45,4 +45,10 @@ public interface WorkShiftRepository extends JpaRepository<WorkShift, UUID> {
         Instant scheduleEnd,
         Instant scheduleStart
     );
+
+    boolean existsByEmployeeIdAndScheduleStartLessThanAndScheduleEndGreaterThan(
+        UUID employeeId,
+        Instant scheduleEnd,
+        Instant scheduleStart
+    );
 }

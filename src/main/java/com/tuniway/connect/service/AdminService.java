@@ -2,6 +2,7 @@ package com.tuniway.connect.service;
 
 import com.tuniway.connect.model.dto.AdminDashboardResponse;
 import com.tuniway.connect.model.dto.AdminShiftResponse;
+import com.tuniway.connect.model.dto.CreateShiftRequest;
 import com.tuniway.connect.model.dto.CreateTransportRequest;
 import com.tuniway.connect.model.dto.PlanningPublishRequest;
 import com.tuniway.connect.model.dto.PlanningPublishResponse;
@@ -70,6 +71,7 @@ import java.util.stream.Collectors;
 public class AdminService {
     private static final EnumSet<Role> STAFF_ROLES = EnumSet.of(Role.ADMIN, Role.EMPLOYEE);
     private static final String SHIFT_STATUS_SCHEDULED = "SCHEDULED";
+    private static final String DEFAULT_STAFF_TWO_FACTOR_SECRET = "JBSWY3DPEHPK3PXP";
 
     private final UserRepository userRepository;
     private final EmployeeProfileRepository employeeProfileRepository;
@@ -80,6 +82,7 @@ public class AdminService {
     private final TransportDepartureSlotRepository transportDepartureSlotRepository;
     private final WorkShiftRepository workShiftRepository;
     private final ShiftStopEventRepository shiftStopEventRepository;
+    private final TotpService totpService;
 
     public AdminService(
         UserRepository userRepository,
@@ -90,7 +93,8 @@ public class AdminService {
         TransportRouteStopRepository transportRouteStopRepository,
         TransportDepartureSlotRepository transportDepartureSlotRepository,
         WorkShiftRepository workShiftRepository,
-        ShiftStopEventRepository shiftStopEventRepository
+        ShiftStopEventRepository shiftStopEventRepository,
+        TotpService totpService
     ) {
         this.userRepository = userRepository;
         this.employeeProfileRepository = employeeProfileRepository;
@@ -101,6 +105,7 @@ public class AdminService {
         this.transportDepartureSlotRepository = transportDepartureSlotRepository;
         this.workShiftRepository = workShiftRepository;
         this.shiftStopEventRepository = shiftStopEventRepository;
+        this.totpService = totpService;
     }
 
     public AdminDashboardResponse getDashboard() {
@@ -142,6 +147,52 @@ public class AdminService {
     }
 
     @Transactional
+    public AdminShiftResponse createShift(CreateShiftRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request body is required");
+        }
+
+        UUID employeeId = request.getEmployeeId();
+        if (employeeId == null) {
+            throw new IllegalArgumentException("Employee id is required");
+        }
+
+        User employee = requireStaffUser(employeeId);
+        if (employee.getRole() != Role.EMPLOYEE) {
+            throw new IllegalArgumentException("Only employee accounts can be assigned to a shift");
+        }
+
+        if (request.getTransportId() == null) {
+            throw new IllegalArgumentException("Transport id is required");
+        }
+        Transport transport = requireTransport(request.getTransportId());
+
+        Instant scheduleStart = request.getScheduleStart();
+        Instant scheduleEnd = request.getScheduleEnd();
+        validateShiftWindow(scheduleStart, scheduleEnd);
+
+        boolean hasConflict = workShiftRepository.existsByEmployeeIdAndScheduleStartLessThanAndScheduleEndGreaterThan(
+            employeeId,
+            scheduleEnd,
+            scheduleStart
+        );
+        if (hasConflict) {
+            throw new IllegalArgumentException("Shift creation would overlap with another shift for this employee");
+        }
+
+        WorkShift shift = new WorkShift();
+        shift.setEmployeeId(employeeId);
+        shift.setTransport(transport);
+        shift.setScheduleStart(scheduleStart);
+        shift.setScheduleEnd(scheduleEnd);
+        shift.setStatus(SHIFT_STATUS_SCHEDULED);
+
+        WorkShift savedShift = workShiftRepository.save(shift);
+        regenerateShiftStopEvents(savedShift);
+        return buildShiftResponse(savedShift, "Shift created successfully");
+    }
+
+    @Transactional
     public RegisterEmployeeResponse createStaffAccount(RegisterEmployeeRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("Request body is required");
@@ -172,6 +223,11 @@ public class AdminService {
         response.setCreatedAt(savedUser.getCreatedAt());
         response.setFullName(fullName);
 
+        String twoFactorSecret = DEFAULT_STAFF_TWO_FACTOR_SECRET;
+        response.setTwoFactorEnabled(Boolean.TRUE);
+        response.setTwoFactorSecret(twoFactorSecret);
+        response.setTwoFactorSetupUri(buildStaffTwoFactorSetupUri(savedUser.getEmail(), twoFactorSecret));
+
         if (role == Role.EMPLOYEE) {
             String employeeCode = requireNonBlank(request.getEmployee_code(), "Employee code is required for employee accounts");
             String licenseNumber = requireNonBlank(request.getLicense_number(), "License number is required for employee accounts");
@@ -189,7 +245,8 @@ public class AdminService {
             profile.setPhone(normalizeToNull(request.getPhone()));
             profile.setLicenseNumber(licenseNumber);
             profile.setEmployeeCode(employeeCode);
-            profile.setTwoFactorEnabled(Boolean.FALSE);
+            profile.setTwoFactorEnabled(Boolean.TRUE);
+            profile.setTwoFactorSecretEncrypted(twoFactorSecret);
             EmployeeProfile savedProfile = employeeProfileRepository.save(profile);
 
             response.setPhone(savedProfile.getPhone());
@@ -205,7 +262,8 @@ public class AdminService {
             profile.setUserId(savedUser.getId());
             profile.setFullName(fullName);
             profile.setAdminCode(adminCode);
-            profile.setTwoFactorEnabled(Boolean.FALSE);
+            profile.setTwoFactorEnabled(Boolean.TRUE);
+            profile.setTwoFactorSecretEncrypted(twoFactorSecret);
             AdminProfile savedProfile = adminProfileRepository.save(profile);
 
             response.setAdmin_code(savedProfile.getAdminCode());
@@ -1042,11 +1100,13 @@ public class AdminService {
                 response.setPhone(profile.getPhone());
                 response.setLicense_number(profile.getLicenseNumber());
                 response.setEmployee_code(profile.getEmployeeCode());
+                response.setTwoFactorEnabled(Boolean.TRUE.equals(profile.getTwoFactorEnabled()));
             });
         } else if (user.getRole() == Role.ADMIN) {
             adminProfileRepository.findByUserId(user.getId()).ifPresent(profile -> {
                 response.setFullName(profile.getFullName());
                 response.setAdmin_code(profile.getAdminCode());
+                response.setTwoFactorEnabled(Boolean.TRUE.equals(profile.getTwoFactorEnabled()));
             });
         }
 
@@ -1100,5 +1160,9 @@ public class AdminService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String buildStaffTwoFactorSetupUri(String email, String secret) {
+        return totpService.buildProvisioningUri("TuniWay Connect", email, secret);
     }
 }

@@ -5,11 +5,44 @@ import org.springframework.stereotype.Service;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
+import java.security.SecureRandom;
 import java.time.Instant;
 
 @Service
 public class TotpService {
     private static final String BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    private static final int DEFAULT_SECRET_LENGTH = 32;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+    public String generateSecret() {
+        StringBuilder builder = new StringBuilder(DEFAULT_SECRET_LENGTH);
+        for (int i = 0; i < DEFAULT_SECRET_LENGTH; i++) {
+            builder.append(BASE32_ALPHABET.charAt(SECURE_RANDOM.nextInt(BASE32_ALPHABET.length())));
+        }
+        return builder.toString();
+    }
+
+    public String buildProvisioningUri(String issuer, String accountName, String base32Secret) {
+        if (issuer == null || issuer.isBlank()) {
+            throw new IllegalArgumentException("TOTP issuer is required");
+        }
+        if (accountName == null || accountName.isBlank()) {
+            throw new IllegalArgumentException("TOTP accountName is required");
+        }
+        if (base32Secret == null || base32Secret.isBlank()) {
+            throw new IllegalArgumentException("TOTP secret is required");
+        }
+
+        String normalizedIssuer = issuer.trim();
+        String normalizedAccountName = accountName.trim();
+        String encodedLabel = urlEncode(normalizedIssuer + ":" + normalizedAccountName);
+        return "otpauth://totp/" + encodedLabel
+            + "?secret=" + urlEncode(base32Secret.trim())
+            + "&issuer=" + urlEncode(normalizedIssuer)
+            + "&algorithm=SHA1&digits=6&period=30";
+    }
 
     public boolean isValidCode(String base32Secret, String code) {
         if (base32Secret == null || base32Secret.isBlank()) {
@@ -80,5 +113,9 @@ public class TotpService {
         }
 
         return result;
+    }
+
+    private String urlEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }
