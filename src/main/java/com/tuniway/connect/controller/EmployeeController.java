@@ -6,9 +6,11 @@ import com.tuniway.connect.model.dto.EmployeeShiftLocationResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftProgressResponse;
+import com.tuniway.connect.model.dto.EmployeeTicketValidationResponse;
 import com.tuniway.connect.model.dto.ShiftEndResponse;
 import com.tuniway.connect.model.dto.ShiftStartRequest;
 import com.tuniway.connect.model.dto.ShiftStartResponse;
+import com.tuniway.connect.model.dto.ValidateTicketRequest;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.repository.UserRepository;
 import com.tuniway.connect.service.EmployeeService;
@@ -95,6 +97,26 @@ public class EmployeeController {
             errorResponse.setSuccess(false);
             errorResponse.setMessage(e.getMessage());
             errorResponse.setShiftId(shiftId);
+            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PreAuthorize("hasRole('EMPLOYEE')")
+    @PostMapping("/tickets/validate")
+    public ResponseEntity<EmployeeTicketValidationResponse> validateTicket(@RequestBody(required = false) ValidateTicketRequest request,
+                                                                           Principal principal) {
+        try {
+            User user = requireAuthenticatedUser(principal);
+            EmployeeTicketValidationResponse response = employeeService.validateTicket(user, request);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            EmployeeTicketValidationResponse errorResponse = new EmployeeTicketValidationResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage(e.getMessage());
+            if (request != null) {
+                errorResponse.setShiftId(request.getShiftId());
+                errorResponse.setTicketId(request.getTicketId());
+            }
             return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
         }
     }

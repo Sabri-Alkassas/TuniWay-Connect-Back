@@ -6,12 +6,21 @@ import java.time.LocalTime;
 import java.util.UUID;
 
 public class TransportDepartureItem {
+    private UUID id;
     private UUID stopId;
     private String dayOfWeek;
     @JsonFormat(pattern = "HH:mm[:ss]")
     private LocalTime departureTime;
     private Boolean active;
     private Integer stopOrder;
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
 
     public UUID getStopId() {
         return stopId;

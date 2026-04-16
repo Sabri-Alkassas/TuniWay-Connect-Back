@@ -9,6 +9,7 @@ import com.tuniway.connect.model.dto.PlanningPublishResponse;
 import com.tuniway.connect.model.dto.ReassignTransportRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
+import com.tuniway.connect.model.dto.TransportDeparturesResponse;
 import com.tuniway.connect.model.dto.TransportDepartureItem;
 import com.tuniway.connect.model.dto.TransportResponse;
 import com.tuniway.connect.model.dto.TransportStopItem;
@@ -67,6 +68,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.tuniway.connect.model.dto.AdminActivityResponse;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.Duration;
+
 @Service
 public class AdminService {
     private static final EnumSet<Role> STAFF_ROLES = EnumSet.of(Role.ADMIN, Role.EMPLOYEE);
@@ -108,6 +114,21 @@ public class AdminService {
         this.totpService = totpService;
     }
 
+    private List<AdminActivityResponse> fetchRecentActivities() {
+        List<AdminActivityResponse> activities = new ArrayList<>();
+        List<WorkShift> recentShifts = workShiftRepository.findAllByOrderByScheduleStartDesc().stream().limit(5).collect(Collectors.toList());
+        for (WorkShift shift : recentShifts) {
+            String empName = resolveEmployeeDisplayName(shift.getEmployeeId());
+            String detail = "Service planifié pour " + empName + " sur " + shift.getTransport().getName();
+            activities.add(new AdminActivityResponse(shift.getId().toString(), "Planification", detail, formatTimeAgo(shift.getScheduleStart()), "#3b82f6"));
+        }
+        return activities;
+    }
+
+    private String formatTimeAgo(Instant time) {
+        return DateTimeFormatter.ofPattern("MMM dd, HH:mm").withZone(ZoneId.systemDefault()).format(time);
+    }
+
     public AdminDashboardResponse getDashboard() {
         AdminDashboardResponse response = new AdminDashboardResponse();
         response.setSuccess(true);
@@ -122,6 +143,7 @@ public class AdminService {
         response.setScheduledShifts(workShiftRepository.countByStatusIgnoreCase(SHIFT_STATUS_SCHEDULED));
         response.setInProgressShifts(workShiftRepository.countByStatusIgnoreCase("IN_PROGRESS"));
         response.setCompletedShifts(workShiftRepository.countByStatusIgnoreCase("COMPLETED"));
+        response.setRecentActivity(fetchRecentActivities());
         return response;
     }
 
@@ -138,6 +160,52 @@ public class AdminService {
             .sorted(Comparator.comparing(Transport::getName, Comparator.nullsLast(String::compareToIgnoreCase)))
             .map(transport -> buildTransportResponse(transport, "Transport retrieved successfully"))
             .toList();
+    }
+
+    public List<TransportStopItem> listStops() {
+        return transportStopRepository.findAll().stream()
+            .sorted(Comparator.comparing(TransportStop::getStopName, Comparator.nullsLast(String::compareToIgnoreCase)))
+            .map(this::toTransportStopItem)
+            .toList();
+    }
+
+    public UpdateTransportStopsRequest getTransportStops(UUID transportId) {
+        Transport transport = requireTransport(transportId);
+
+        List<TransportStopItem> stops = transportRouteStopRepository.findByTransportIdOrderByStopOrderAsc(transport.getId()).stream()
+            .map(routeStop -> {
+                TransportStopItem item = toTransportStopItem(routeStop.getStop());
+                item.setStopOrder(routeStop.getStopOrder());
+                item.setActive(routeStop.getActive());
+                return item;
+            })
+            .toList();
+
+        UpdateTransportStopsRequest response = new UpdateTransportStopsRequest();
+        response.setStops(stops);
+        return response;
+    }
+
+    public TransportDeparturesResponse getTransportDepartures(UUID transportId) {
+        requireTransport(transportId);
+
+        List<TransportDepartureItem> departures = transportDepartureSlotRepository
+            .findByTransportIdOrderByStopOrderAscDayOfWeekAscDepartureTimeAsc(transportId).stream()
+            .map(slot -> {
+                TransportDepartureItem item = new TransportDepartureItem();
+                item.setId(slot.getId());
+                item.setStopId(slot.getStop() != null ? slot.getStop().getId() : null);
+                item.setDayOfWeek(slot.getDayOfWeek());
+                item.setDepartureTime(slot.getDepartureTime());
+                item.setActive(slot.getActive());
+                item.setStopOrder(slot.getStopOrder());
+                return item;
+            })
+            .toList();
+
+        TransportDeparturesResponse response = new TransportDeparturesResponse();
+        response.setDepartures(departures);
+        return response;
     }
 
     public List<AdminShiftResponse> listShifts() {
@@ -658,9 +726,11 @@ public class AdminService {
 
     private void replaceTransportStops(Transport transport, List<TransportStopItem> stopItems) {
         transportRouteStopRepository.deleteByTransportId(transport.getId());
+        transportRouteStopRepository.flush();
 
         if (stopItems.isEmpty()) {
             transportDepartureSlotRepository.deleteByTransportId(transport.getId());
+            transportDepartureSlotRepository.flush();
             return;
         }
 
@@ -703,6 +773,7 @@ public class AdminService {
         List<TransportRouteStop> routeStops = transportRouteStopRepository.findByTransportIdOrderByStopOrderAsc(transport.getId());
         if (departureItems.isEmpty()) {
             transportDepartureSlotRepository.deleteByTransportId(transport.getId());
+            transportDepartureSlotRepository.flush();
             return;
         }
         if (routeStops.isEmpty()) {
@@ -713,6 +784,7 @@ public class AdminService {
             .collect(Collectors.toMap(routeStop -> routeStop.getStop().getId(), routeStop -> routeStop));
 
         transportDepartureSlotRepository.deleteByTransportId(transport.getId());
+        transportDepartureSlotRepository.flush();
 
         Set<String> seenSlots = new HashSet<>();
         List<TransportDepartureSlot> slots = new ArrayList<>();
@@ -798,6 +870,17 @@ public class AdminService {
         validateLongitude(item.getLongitude());
         newStop.setLongitude(item.getLongitude());
         return transportStopRepository.save(newStop);
+    }
+
+    private TransportStopItem toTransportStopItem(TransportStop stop) {
+        TransportStopItem item = new TransportStopItem();
+        item.setStopId(stop.getId());
+        item.setStopName(stop.getStopName());
+        item.setZone(stop.getZone());
+        item.setActive(stop.getActive());
+        item.setLatitude(stop.getLatitude());
+        item.setLongitude(stop.getLongitude());
+        return item;
     }
 
     private void validateLatitude(BigDecimal latitude) {

@@ -1,5 +1,7 @@
 package com.tuniway.connect.model.dto;
 
+import java.util.List;
+
 public class AdminDashboardResponse {
     private boolean success;
     private String message;
@@ -13,6 +15,15 @@ public class AdminDashboardResponse {
     private long scheduledShifts;
     private long inProgressShifts;
     private long completedShifts;
+    private List<AdminActivityResponse> recentActivity;
+
+    public List<AdminActivityResponse> getRecentActivity() {
+        return recentActivity;
+    }
+
+    public void setRecentActivity(List<AdminActivityResponse> recentActivity) {
+        this.recentActivity = recentActivity;
+    }
 
     public boolean isSuccess() {
         return success;

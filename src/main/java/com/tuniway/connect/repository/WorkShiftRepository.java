@@ -23,8 +23,21 @@ public interface WorkShiftRepository extends JpaRepository<WorkShift, UUID> {
 
     @EntityGraph(attributePaths = {"transport"})
     Optional<WorkShift> findByIdAndEmployeeId(UUID id, UUID employeeId);
+    @EntityGraph(attributePaths = {"transport"})
+    Optional<WorkShift> findFirstByEmployeeIdAndStatusIgnoreCaseOrderByActualStartDesc(UUID employeeId, String status);
     long countByStatusIgnoreCase(String status);
     List<WorkShift> findByTransportId(UUID transportId);
+
+    @Query("""
+        select ws from WorkShift ws
+        join fetch ws.transport t
+        where lower(coalesce(ws.status, '')) = lower(:status)
+          and ws.currentLatitude is not null
+          and ws.currentLongitude is not null
+          and ws.currentLocationUpdatedAt is not null
+        order by ws.currentLocationUpdatedAt desc, ws.actualStart desc
+        """)
+    List<WorkShift> findLocatedByStatus(@Param("status") String status);
 
     @Query("""
         select ws from WorkShift ws

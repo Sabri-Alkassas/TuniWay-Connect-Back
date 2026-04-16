@@ -1,9 +1,11 @@
 package com.tuniway.connect.repository;
 
 import com.tuniway.connect.model.entity.TicketPurchase;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -41,4 +43,9 @@ public interface TicketPurchaseRepository extends JpaRepository<TicketPurchase, 
                                         @Param("toStopOrder") Integer toStopOrder,
                                         @Param("status") String status,
                                         @Param("now") Instant now);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = {"product", "transport", "fromStop", "toStop"})
+    @Query("select p from TicketPurchase p where p.id = :id")
+    java.util.Optional<TicketPurchase> findByIdForUpdate(@Param("id") UUID id);
 }

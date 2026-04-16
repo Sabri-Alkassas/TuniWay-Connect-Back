@@ -560,7 +560,35 @@ public class ClientService {
             }
         }
 
-        Map<UUID, LiveLocationSnapshot> liveLocations = loadActiveLocationSnapshots(nearbyCandidates.keySet());
+        Map<UUID, LiveLocationSnapshot> liveLocations = loadAllActiveLocationSnapshots();
+
+        // Incorporer les bus live dans les candidats, meme si aucun arret n'est trouve (ou mettre a jour la distance).
+        for (Map.Entry<UUID, LiveLocationSnapshot> entry : liveLocations.entrySet()) {
+            UUID transportId = entry.getKey();
+            LiveLocationSnapshot snapshot = entry.getValue();
+
+            double distanceToBus = calculateDistanceMeters(
+                latitude,
+                longitude,
+                snapshot.latitude().doubleValue(),
+                snapshot.longitude().doubleValue()
+            );
+
+            if (distanceToBus <= resolvedRadiusMeters) {
+                NearbyCandidate existingCandidate = nearbyCandidates.get(transportId);
+                if (existingCandidate == null) {
+                    Transport transport = transportRepository.findById(transportId).orElse(null);
+                    if (transport != null && Boolean.TRUE.equals(transport.getActive())) {
+                        nearbyCandidates.put(transportId, new NearbyCandidate(transport, null, distanceToBus, 0));
+                    }
+                } else {
+                    if (distanceToBus < existingCandidate.distanceMeters()) {
+                        existingCandidate.setDistanceMeters(distanceToBus);
+                    }
+                }
+            }
+        }
+
         Map<UUID, Long> stopCounts = loadVisibleStopCounts(nearbyCandidates.keySet());
         Map<UUID, Long> departureCounts = loadVisibleDepartureCounts(nearbyCandidates.keySet());
 
@@ -1213,10 +1241,30 @@ public class ClientService {
             .sorted()
             .toList();
 
+        TreeMap<Integer, Double> anchorOffsets = buildAnchorOffsets(originDepartureTimes, daySlots, originStopOrder);
+        loadObservedAnchorOffsets(transport.getId()).forEach(anchorOffsets::putIfAbsent);
+
+        double minutesPerStop = resolveMinutesPerStop(transport, anchorOffsets);
+        if (anchorOffsets.size() == 1 && !routeStops.isEmpty()) {
+            int lastStopOrder = routeStops.get(routeStops.size() - 1).getStopOrder();
+            anchorOffsets.put(lastStopOrder, Math.max(1, lastStopOrder - originStopOrder) * minutesPerStop);
+        }
+
+        Map<Integer, Long> offsets = new LinkedHashMap<>();
+        for (TransportRouteStop routeStop : routeStops) {
+            offsets.put(routeStop.getStopOrder(), Math.round(estimateStopOffsetMinutes(routeStop.getStopOrder(), anchorOffsets, minutesPerStop)));
+        }
+        return offsets;
+    }
+
+    private TreeMap<Integer, Double> buildAnchorOffsets(List<LocalTime> originDepartureTimes,
+                                                        List<TransportDepartureSlot> slots,
+                                                        int originStopOrder) {
         TreeMap<Integer, Double> anchorOffsets = new TreeMap<>();
         anchorOffsets.put(originStopOrder, 0d);
 
-        Map<Integer, List<LocalTime>> slotTimesByOrder = daySlots.stream()
+        Map<Integer, List<LocalTime>> slotTimesByOrder = slots.stream()
+            .filter(slot -> slot.getStopOrder() != null)
             .collect(Collectors.groupingBy(
                 TransportDepartureSlot::getStopOrder,
                 TreeMap::new,
@@ -1234,17 +1282,61 @@ public class ClientService {
             }
         });
 
-        double minutesPerStop = resolveMinutesPerStop(transport, anchorOffsets);
-        if (anchorOffsets.size() == 1 && !routeStops.isEmpty()) {
-            int lastStopOrder = routeStops.get(routeStops.size() - 1).getStopOrder();
-            anchorOffsets.put(lastStopOrder, Math.max(1, lastStopOrder - originStopOrder) * minutesPerStop);
+        return anchorOffsets;
+    }
+
+    private TreeMap<Integer, Double> loadObservedAnchorOffsets(UUID transportId) {
+        List<TransportDepartureSlot> allVisibleSlots = transportDepartureSlotRepository
+            .findByTransportIdOrderByStopOrderAscDayOfWeekAscDepartureTimeAsc(transportId)
+            .stream()
+            .filter(this::isClientVisibleDeparture)
+            .toList();
+
+        if (allVisibleSlots.isEmpty()) {
+            return new TreeMap<>();
         }
 
-        Map<Integer, Long> offsets = new LinkedHashMap<>();
-        for (TransportRouteStop routeStop : routeStops) {
-            offsets.put(routeStop.getStopOrder(), Math.round(estimateStopOffsetMinutes(routeStop.getStopOrder(), anchorOffsets, minutesPerStop)));
+        Map<Integer, List<Double>> observedOffsetsByStopOrder = new TreeMap<>();
+        Map<String, List<TransportDepartureSlot>> slotsByTemplateDay = allVisibleSlots.stream()
+            .collect(Collectors.groupingBy(
+                slot -> normalizeDayOfWeek(slot.getDayOfWeek()),
+                LinkedHashMap::new,
+                Collectors.toList()
+            ));
+
+        for (List<TransportDepartureSlot> slotsForDay : slotsByTemplateDay.values()) {
+            Integer originStopOrder = slotsForDay.stream()
+                .map(TransportDepartureSlot::getStopOrder)
+                .filter(stopOrder -> stopOrder != null)
+                .min(Integer::compareTo)
+                .orElse(null);
+
+            if (originStopOrder == null) {
+                continue;
+            }
+
+            List<LocalTime> originDepartureTimes = slotsForDay.stream()
+                .filter(slot -> originStopOrder.equals(slot.getStopOrder()))
+                .map(TransportDepartureSlot::getDepartureTime)
+                .sorted()
+                .toList();
+
+            if (originDepartureTimes.isEmpty()) {
+                continue;
+            }
+
+            buildAnchorOffsets(originDepartureTimes, slotsForDay, originStopOrder)
+                .forEach((stopOrder, offsetMinutes) -> observedOffsetsByStopOrder
+                    .computeIfAbsent(stopOrder, ignored -> new ArrayList<>())
+                    .add(offsetMinutes));
         }
-        return offsets;
+
+        TreeMap<Integer, Double> observedAnchorOffsets = new TreeMap<>();
+        observedOffsetsByStopOrder.forEach((stopOrder, offsets) -> observedAnchorOffsets.put(
+            stopOrder,
+            offsets.stream().mapToDouble(Double::doubleValue).average().orElse(0d)
+        ));
+        return observedAnchorOffsets;
     }
 
     private Double averageOffsetMinutesFromOrigin(List<LocalTime> originDepartureTimes, List<LocalTime> departureTimes) {
@@ -1358,11 +1450,8 @@ public class ClientService {
 
     private String resolveScheduleTemplateDay(LocalDate serviceDate) {
         DayOfWeek dayOfWeek = serviceDate.getDayOfWeek();
-        return switch (dayOfWeek) {
-            case SATURDAY -> "Saturday";
-            case SUNDAY -> "Sunday";
-            default -> "Monday";
-        };
+        String name = dayOfWeek.name().toLowerCase(java.util.Locale.ENGLISH);
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }
 
     private LocalTime addMinutesSafely(LocalTime time, long minutes) {
@@ -1426,13 +1515,17 @@ public class ClientService {
     private List<String> resolveAvailableDays(UUID transportId) {
         return transportDepartureSlotRepository.findByTransportIdOrderByStopOrderAscDayOfWeekAscDepartureTimeAsc(transportId).stream()
             .filter(this::isClientVisibleDeparture)
-            .map(slot -> normalizeDisplayDayOfWeek(slot.getDayOfWeek()))
+            .map(slot -> normalizeDayOfWeek(slot.getDayOfWeek()))
             .distinct()
             .sorted(Comparator.comparingInt(day -> DayOfWeek.valueOf(day.toUpperCase(Locale.ENGLISH)).getValue()))
+            .map(this::normalizeDisplayDayOfWeek)
             .toList();
     }
 
     private ClientTransportStopDto toTransportStopDto(TransportRouteStop routeStop) {
+        if (routeStop == null) {
+            return null;
+        }
         TransportStop stop = routeStop.getStop();
 
         ClientTransportStopDto dto = new ClientTransportStopDto();
@@ -1520,17 +1613,11 @@ public class ClientService {
         return Math.round(distanceMeters * 100.0d) / 100.0d;
     }
 
-    private Map<UUID, LiveLocationSnapshot> loadActiveLocationSnapshots(Iterable<UUID> transportIds) {
-        List<UUID> ids = new ArrayList<>();
-        transportIds.forEach(ids::add);
-        if (ids.isEmpty()) {
-            return Map.of();
-        }
-
+    private Map<UUID, LiveLocationSnapshot> loadAllActiveLocationSnapshots() {
         Instant freshnessThreshold = Instant.now().minus(LIVE_LOCATION_STALE_MINUTES, ChronoUnit.MINUTES);
         Map<UUID, LiveLocationSnapshot> snapshots = new HashMap<>();
 
-        for (WorkShift shift : workShiftRepository.findLocatedByTransportIdsAndStatus(ids, WORK_SHIFT_STATUS_IN_PROGRESS)) {
+        for (WorkShift shift : workShiftRepository.findLocatedByStatus(WORK_SHIFT_STATUS_IN_PROGRESS)) {
             if (shift.getTransport() == null
                 || shift.getTransport().getId() == null
                 || shift.getCurrentLatitude() == null
@@ -1603,7 +1690,7 @@ public class ClientService {
         if (normalized == null) {
             throw new IllegalArgumentException("Day of week is required");
         }
-        return DayOfWeek.valueOf(normalized.toUpperCase(Locale.ENGLISH)).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+        return DayOfWeek.valueOf(normalized.toUpperCase(Locale.ENGLISH)).getDisplayName(TextStyle.FULL, Locale.FRENCH);
     }
 
     private String normalizeToLowerCase(String value) {

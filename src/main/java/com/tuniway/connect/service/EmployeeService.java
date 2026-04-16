@@ -3,17 +3,23 @@ package com.tuniway.connect.service;
 import com.tuniway.connect.model.dto.EmployeeLocationUpdateRequest;
 import com.tuniway.connect.model.dto.EmployeeScheduleResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftLocationResponse;
+import com.tuniway.connect.model.dto.EmployeeTicketValidationResponse;
 import com.tuniway.connect.model.dto.ShiftStartRequest;
 import com.tuniway.connect.model.dto.ShiftStartResponse;
 import com.tuniway.connect.model.dto.ShiftEndResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftStopsResponse;
 import com.tuniway.connect.model.dto.EmployeeStopActionResponse;
 import com.tuniway.connect.model.dto.EmployeeShiftProgressResponse;
+import com.tuniway.connect.model.dto.ValidateTicketRequest;
+import com.tuniway.connect.model.entity.PaymentTransaction;
 import com.tuniway.connect.model.entity.ShiftStopEvent;
+import com.tuniway.connect.model.entity.TicketPurchase;
 import com.tuniway.connect.model.entity.Transport;
 import com.tuniway.connect.model.entity.User;
 import com.tuniway.connect.model.entity.WorkShift;
+import com.tuniway.connect.repository.PaymentTransactionRepository;
 import com.tuniway.connect.repository.ShiftStopEventRepository;
+import com.tuniway.connect.repository.TicketPurchaseRepository;
 import com.tuniway.connect.repository.WorkShiftRepository;
 import java.math.BigDecimal;
 import org.springframework.stereotype.Service;
@@ -25,6 +31,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -37,13 +44,19 @@ public class EmployeeService {
     );
     private final WorkShiftRepository workShiftRepository;
     private final ShiftStopEventRepository shiftStopEventRepository;
+    private final TicketPurchaseRepository ticketPurchaseRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
     public EmployeeService(WorkShiftRepository workShiftRepository,
                         ShiftStopEventRepository shiftStopEventRepository,
+                        TicketPurchaseRepository ticketPurchaseRepository,
+                        PaymentTransactionRepository paymentTransactionRepository,
                         SimpMessagingTemplate messagingTemplate) {
         this.workShiftRepository = workShiftRepository;
         this.shiftStopEventRepository = shiftStopEventRepository;
+        this.ticketPurchaseRepository = ticketPurchaseRepository;
+        this.paymentTransactionRepository = paymentTransactionRepository;
         this.messagingTemplate = messagingTemplate;
     }
     private void publishShiftProgressToEmployee(User user, UUID shiftId) {
@@ -171,6 +184,61 @@ public class EmployeeService {
         return response;
     }
 
+    @Transactional
+    public EmployeeTicketValidationResponse validateTicket(User user, ValidateTicketRequest request) {
+        if (request == null) {
+            throw new RuntimeException("Validation request body is required");
+        }
+        if (request.getTicketId() == null) {
+            throw new RuntimeException("ticketId is required");
+        }
+
+        String providedToken = request.getQrCode() == null ? "" : request.getQrCode().trim();
+        if (providedToken.isEmpty()) {
+            throw new RuntimeException("qrCode token is required");
+        }
+
+        WorkShift activeShift = resolveActiveShiftForValidation(user.getId(), request.getShiftId());
+
+        TicketPurchase purchase = ticketPurchaseRepository.findByIdForUpdate(request.getTicketId())
+            .orElseThrow(() -> new RuntimeException("Ticket not found"));
+
+        if (purchase.getTransport() == null || purchase.getTransport().getId() == null) {
+            throw new RuntimeException("Ticket is not linked to a transport");
+        }
+        if (activeShift.getTransport() == null || activeShift.getTransport().getId() == null) {
+            throw new RuntimeException("Active shift transport is missing");
+        }
+        if (!purchase.getTransport().getId().equals(activeShift.getTransport().getId())) {
+            throw new RuntimeException("Ticket does not belong to the active shift transport");
+        }
+
+        String currentStatus = purchase.getStatus() == null
+            ? ""
+            : purchase.getStatus().trim().toUpperCase(Locale.ENGLISH);
+
+        if ("USED".equals(currentStatus)) {
+            return buildValidationResponse(activeShift, purchase, false, "Ticket already validated", Instant.now());
+        }
+        if (purchase.getValidUntil() != null && purchase.getValidUntil().isBefore(Instant.now())) {
+            throw new RuntimeException("Ticket is expired");
+        }
+        if (!"ACTIVE".equals(currentStatus)) {
+            throw new RuntimeException("Ticket status is not valid for validation: " + currentStatus);
+        }
+
+        String expectedToken = resolveExpectedTicketToken(purchase);
+        if (!expectedToken.equals(providedToken)) {
+            throw new RuntimeException("Invalid QR token for this ticket");
+        }
+
+        Instant validatedAt = Instant.now();
+        purchase.setStatus("USED");
+        TicketPurchase saved = ticketPurchaseRepository.save(purchase);
+
+        return buildValidationResponse(activeShift, saved, true, "Ticket validated successfully", validatedAt);
+    }
+
     public EmployeeShiftStopsResponse getShiftStops(UUID employeeId, UUID shiftId) {
         WorkShift shift = requireOwnedShift(employeeId, shiftId);
         List<ShiftStopEvent> events = shiftStopEventRepository.findByWorkShiftIdOrderByStopOrderAsc(shift.getId());
@@ -270,6 +338,47 @@ public class EmployeeService {
     private WorkShift requireOwnedShift(UUID employeeId, UUID shiftId) {
         return workShiftRepository.findByIdAndEmployeeId(shiftId, employeeId)
                 .orElseThrow(() -> new RuntimeException("Shift not found for this employee"));
+    }
+
+    private WorkShift resolveActiveShiftForValidation(UUID employeeId, UUID requestedShiftId) {
+        WorkShift shift;
+        if (requestedShiftId != null) {
+            shift = requireOwnedShift(employeeId, requestedShiftId);
+        } else {
+            shift = workShiftRepository
+                .findFirstByEmployeeIdAndStatusIgnoreCaseOrderByActualStartDesc(employeeId, "IN_PROGRESS")
+                .orElseThrow(() -> new RuntimeException("No active shift found for this employee"));
+        }
+
+        if (!"IN_PROGRESS".equals(normalizeShiftStatus(shift.getStatus()))) {
+            throw new RuntimeException("Shift must be in progress for ticket validation");
+        }
+
+        return shift;
+    }
+
+    private String resolveExpectedTicketToken(TicketPurchase purchase) {
+        return paymentTransactionRepository
+            .findFirstByTicketPurchaseIdOrderByProcessedAtDesc(purchase.getId())
+            .map(PaymentTransaction::getProviderReference)
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .orElseGet(() -> purchase.getId().toString());
+    }
+
+    private EmployeeTicketValidationResponse buildValidationResponse(WorkShift shift,
+                                                                     TicketPurchase purchase,
+                                                                     boolean consumedNow,
+                                                                     String message,
+                                                                     Instant validatedAt) {
+        EmployeeTicketValidationResponse response = new EmployeeTicketValidationResponse();
+        response.setSuccess(true);
+        response.setMessage(message);
+        response.setShiftId(shift.getId());
+        response.setTicketId(purchase.getId());
+        response.setStatus(consumedNow ? "USED" : purchase.getStatus());
+        response.setValidatedAt(validatedAt);
+        return response;
     }
 
     private ShiftStopEvent requireShiftStopEvent(UUID shiftId, UUID stopId) {

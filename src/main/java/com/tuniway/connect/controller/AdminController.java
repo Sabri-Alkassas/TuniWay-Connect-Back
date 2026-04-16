@@ -9,7 +9,9 @@ import com.tuniway.connect.model.dto.PlanningPublishResponse;
 import com.tuniway.connect.model.dto.ReassignTransportRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeRequest;
 import com.tuniway.connect.model.dto.RegisterEmployeeResponse;
+import com.tuniway.connect.model.dto.TransportDeparturesResponse;
 import com.tuniway.connect.model.dto.TransportResponse;
+import com.tuniway.connect.model.dto.TransportStopItem;
 import com.tuniway.connect.model.dto.UpdateShiftRequest;
 import com.tuniway.connect.model.dto.UpdateTransportDeparturesRequest;
 import com.tuniway.connect.model.dto.UpdateTransportRequest;
@@ -65,6 +67,24 @@ public class AdminController {
     @GetMapping("/transports")
     public ResponseEntity<java.util.List<TransportResponse>> listTransports() {
         return new ResponseEntity<>(adminService.listTransports(), HttpStatus.OK);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/stops")
+    public ResponseEntity<java.util.List<TransportStopItem>> listStops() {
+        return new ResponseEntity<>(adminService.listStops(), HttpStatus.OK);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/transports/{id}/stops")
+    public ResponseEntity<UpdateTransportStopsRequest> getTransportStops(@PathVariable("id") UUID transportId) {
+        return new ResponseEntity<>(adminService.getTransportStops(transportId), HttpStatus.OK);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/transports/{id}/departures")
+    public ResponseEntity<TransportDeparturesResponse> getTransportDepartures(@PathVariable("id") UUID transportId) {
+        return new ResponseEntity<>(adminService.getTransportDepartures(transportId), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole('ADMIN')")
