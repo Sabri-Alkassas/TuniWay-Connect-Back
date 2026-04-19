@@ -1,11 +1,11 @@
-INSERT INTO transport (id, code, name, type, route_name, start_point, end_point, operating_zone, zone, active, capacity)
+INSERT INTO transport (id, code, name, type, route_name, start_point, end_point, operating_zone, active, capacity)
 SELECT *
 FROM (
     VALUES
-        ('51000000-0000-0000-0000-000000000001'::uuid, 'BUS-L5', 'Ligne 5 - Lac vers Bardo', 'BUS', 'Lac 1 -> Bardo', 'Lac 1', 'Bardo', 'Grand Tunis', 'A', TRUE, 90),
-        ('51000000-0000-0000-0000-000000000002'::uuid, 'METRO-M2', 'Metro 2 - Ariana', 'METRO', 'Centre-ville -> Ariana', 'Place de la Republique', 'Ariana', 'Grand Tunis', 'B', TRUE, 220),
-        ('51000000-0000-0000-0000-000000000003'::uuid, 'TRAIN-T1', 'Train Banlieue - Tunis Marine vers La Goulette', 'TRAIN', 'Tunis Marine -> La Goulette', 'Tunis Marine', 'La Goulette', 'Grand Tunis', 'C', TRUE, 260)
-) AS seed(id, code, name, type, route_name, start_point, end_point, operating_zone, zone, active, capacity)
+    ('51000000-0000-0000-0000-000000000001'::uuid, 'BUS-L5', 'Ligne 5 - Lac vers Bardo', 'BUS', 'Lac 1 -> Bardo', 'Lac 1', 'Bardo', 'Grand Tunis', TRUE, 90),
+    ('51000000-0000-0000-0000-000000000002'::uuid, 'METRO-M2', 'Metro 2 - Ariana', 'METRO', 'Centre-ville -> Ariana', 'Place de la Republique', 'Ariana', 'Grand Tunis', TRUE, 220),
+    ('51000000-0000-0000-0000-000000000003'::uuid, 'TRAIN-T1', 'Train Banlieue - Tunis Marine vers La Goulette', 'TRAIN', 'Tunis Marine -> La Goulette', 'Tunis Marine', 'La Goulette', 'Grand Tunis', TRUE, 260)
+) AS seed(id, code, name, type, route_name, start_point, end_point, operating_zone, active, capacity)
 WHERE NOT EXISTS (
     SELECT 1
     FROM transport existing
