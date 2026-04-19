@@ -27,3 +27,16 @@ Maven is being installed to `%USERPROFILE%\maven` (download may still be in prog
 ## CORS
 
 The backend allows requests from the frontend dev server (e.g. `http://localhost:1234`). Adjust `WebConfig.java` if your frontend runs on another origin or port.
+
+
+###### Pour activer le back-end de project i doit executer les commandes ci-dessous:
+
+CREATE ROLE tuniway\_admin WITH LOGIN PASSWORD 'L30NSK3nNedY';
+
+CREATE DATABASE tuniway\_db OWNER tuniway\_admin;
+
+GRANT ALL PRIVILEGES ON DATABASE tuniway\_db TO tuniway\_admin;
+
+###### 
+
+###### Puis executer le command mvn springboot:run
