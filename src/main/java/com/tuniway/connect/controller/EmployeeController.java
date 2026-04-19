@@ -28,9 +28,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.security.Principal;
 import java.util.UUID;
 
+// Initial implementation of EmployeeController to handle employee-related endpoints such as retrieving schedules, starting and ending shifts, updating shift locations, validating tickets, and managing stops during shifts. Each endpoint is designed to handle specific employee operations and return appropriate responses based on the success or failure of the operations. The controller also includes a helper method to retrieve the authenticated user based on the provided Principal.
 @RestController
 @RequestMapping("/api/v1/employee")
-public class EmployeeController {
+public class EmployeeController { // Controller to handle employee-related endpoints such as retrieving schedules, starting and ending shifts, updating shift locations, validating tickets, and managing stops during shifts. Each endpoint is designed to handle specific employee operations and return appropriate responses based on the success or failure of the operations. The controller also includes a helper method to retrieve the authenticated user based on the provided Principal.
 
     @Autowired
     private EmployeeService employeeService;
@@ -40,7 +41,7 @@ public class EmployeeController {
 
     @PreAuthorize("hasRole('EMPLOYEE')")
     @GetMapping("/schedule")
-    public ResponseEntity<EmployeeScheduleResponse> getSchedule(Principal principal) {
+    public ResponseEntity<EmployeeScheduleResponse> getSchedule(Principal principal) { // Endpoint to retrieve the employee's schedule. The endpoint is secured with role-based access control to ensure that only authenticated employees can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             EmployeeScheduleResponse response = employeeService.getSchedule(user.getId());
@@ -56,7 +57,7 @@ public class EmployeeController {
     @PostMapping("/shifts/{id}/start")
     public ResponseEntity<ShiftStartResponse> postShiftStartTime(@RequestBody(required = false) ShiftStartRequest request,
                                                                  @PathVariable("id") UUID shiftId,
-                                                                 Principal principal) {
+                                                                 Principal principal) { // Endpoint to start a shift. The endpoint is secured with role-based access control to ensure that only authenticated employees can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             return new ResponseEntity<>(employeeService.startShift(request, shiftId, user), HttpStatus.OK);
@@ -71,7 +72,7 @@ public class EmployeeController {
 
     @PreAuthorize("hasRole('EMPLOYEE')")
     @PostMapping("/shifts/{id}/end")
-    public ResponseEntity<ShiftEndResponse> postShiftEndTime(@PathVariable("id") UUID shiftId, Principal principal) {
+    public ResponseEntity<ShiftEndResponse> postShiftEndTime(@PathVariable("id") UUID shiftId, Principal principal) { // Endpoint to end a shift. The endpoint is secured with role-based access control to ensure that only authenticated employees can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             return new ResponseEntity<>(employeeService.endShift(shiftId, user), HttpStatus.OK);
@@ -87,7 +88,7 @@ public class EmployeeController {
     @PostMapping("/shifts/{id}/location")
     public ResponseEntity<EmployeeShiftLocationResponse> updateShiftLocation(@PathVariable("id") UUID shiftId,
                                                                              @RequestBody(required = false) EmployeeLocationUpdateRequest request,
-                                                                             Principal principal) {
+                                                                             Principal principal) { // Endpoint to update the location of an ongoing shift. The endpoint is secured with role-based access control to ensure that only authenticated employees can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             EmployeeShiftLocationResponse response = employeeService.updateShiftLocation(user, shiftId, request);
@@ -104,7 +105,7 @@ public class EmployeeController {
     @PreAuthorize("hasRole('EMPLOYEE')")
     @PostMapping("/tickets/validate")
     public ResponseEntity<EmployeeTicketValidationResponse> validateTicket(@RequestBody(required = false) ValidateTicketRequest request,
-                                                                           Principal principal) {
+                                                                           Principal principal) { // Endpoint to validate a ticket. The endpoint is secured with role-based access control to ensure that only authenticated employees can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             EmployeeTicketValidationResponse response = employeeService.validateTicket(user, request);
@@ -124,7 +125,7 @@ public class EmployeeController {
     @PreAuthorize("hasRole('EMPLOYEE')")
     @GetMapping("/shifts/{id}/stops")
     public ResponseEntity<EmployeeShiftStopsResponse> getShiftStops(@PathVariable("id") UUID shiftId,
-                                                                     Principal principal) {
+                                                                     Principal principal) { // Endpoint to retrieve the stops associated with an ongoing shift. The endpoint is secured with role-based access control to ensure that only authenticated employees can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             EmployeeShiftStopsResponse response = employeeService.getShiftStops(user.getId(), shiftId);
@@ -141,7 +142,7 @@ public class EmployeeController {
     @PostMapping("/shifts/{id}/stops/{stopId}/arrive")
     public ResponseEntity<EmployeeStopActionResponse> arriveStop(@PathVariable("id") UUID shiftId,
                                                                  @PathVariable UUID stopId,
-                                                                 Principal principal) {
+                                                                 Principal principal) { // Endpoint to mark arrival at a stop during an ongoing shift. The endpoint is secured with role-based access control to ensure that only authenticated employees can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             EmployeeStopActionResponse response = employeeService.arriveAtStop(user, shiftId, stopId);
@@ -159,7 +160,7 @@ public class EmployeeController {
     @PostMapping("/shifts/{id}/stops/{stopId}/depart")
     public ResponseEntity<EmployeeStopActionResponse> departStop(@PathVariable("id") UUID shiftId,
                                                                  @PathVariable UUID stopId,
-                                                                 Principal principal) {
+                                                                 Principal principal) { // Endpoint to mark departure from a stop during an ongoing shift. The endpoint is secured with role-based access control to ensure that only authenticated employees can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             EmployeeStopActionResponse response = employeeService.departFromStop(user, shiftId, stopId);
@@ -173,7 +174,7 @@ public class EmployeeController {
         }
     }
 
-    private User requireAuthenticatedUser(Principal principal) {
+    private User requireAuthenticatedUser(Principal principal) { // Helper method to retrieve the authenticated user based on the provided Principal. If the Principal is null or does not contain a valid email, a RuntimeException is thrown indicating that the request is unauthenticated. If the user is not found in the database, a RuntimeException is thrown indicating that the user was not found.
         if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
             throw new RuntimeException("Unauthenticated request");
         }

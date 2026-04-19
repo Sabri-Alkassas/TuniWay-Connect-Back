@@ -10,7 +10,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
-
+// Initial implementation of WebConfig to set up CORS configuration for the application. This allows cross-origin requests from specified patterns, which is essential for frontend-backend communication in a web application.
 @Configuration
 public class WebConfig {
 

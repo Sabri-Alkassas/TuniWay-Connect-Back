@@ -20,9 +20,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+// Initial implementation of AuthController to handle authentication-related endpoints such as registration, login, email verification, two-factor authentication, token refresh, and logout. Each endpoint is designed to handle specific authentication operations and return appropriate responses based on the success or failure of the operations.
 @RestController
 @RequestMapping("/api/v1/auth")
-public class AuthController {
+public class AuthController { // Controller to handle authentication-related endpoints such as registration, login, email verification, two-factor authentication, token refresh, and logout. Each endpoint is designed to handle specific authentication operations and return appropriate responses based on the success or failure of the operations.
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     @Autowired
@@ -30,7 +31,7 @@ public class AuthController {
 
     @PostMapping("/register-client")
     public ResponseEntity<RegisterClientResponse> registerClient(@RequestBody RegisterClientRequest request) {
-        try {
+        try { // Endpoint to register a new client. The request body contains the details of the client to be registered. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
             RegisterClientResponse response = userService.registerClient(request);
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         } catch (RuntimeException e) {
@@ -42,7 +43,7 @@ public class AuthController {
 
     @PostMapping("/verify-email")
     public ResponseEntity<VerifyEmailResponse> verifyEmail(@RequestBody VerifyEmailRequest request) {
-        try {
+        try { // Endpoint to verify the email address of a user. The request body contains the verification details. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
             VerifyEmailResponse response = userService.verifyEmail(request);
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         } catch (RuntimeException e) {
@@ -56,7 +57,7 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
         log.info("POST /api/v1/auth/login received for email={}", request.getEmail());
-        try {
+        try { // Endpoint to login a user. The request body contains the login credentials. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
             LoginResponse response = userService.login(request);
             log.info(
                 "POST /api/v1/auth/login completed for email={} authenticated={} twoFactorRequired={} role={} status={}",
@@ -78,7 +79,7 @@ public class AuthController {
 
     @PostMapping("/2fa/verify")
     public ResponseEntity<VerifyTwoFactorResponse> verifyTwoFactor(@RequestBody VerifyTwoFactorRequest request) {
-        try {
+        try { // Endpoint to verify the two-factor authentication code. The request body contains the verification details. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
             VerifyTwoFactorResponse response = userService.verifyTwoFactor(request);
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {
@@ -91,7 +92,7 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ResponseEntity<RefreshResponse> refresh(@RequestBody RefreshRequest request) {
-        try {
+        try { // Endpoint to refresh the authentication token. The request body contains the refresh token. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
             RefreshResponse response = userService.refresh(request);
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {

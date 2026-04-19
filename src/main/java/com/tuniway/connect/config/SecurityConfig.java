@@ -12,13 +12,13 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
 
-
+// Initial implementation of SecurityConfig with JWT authentication and CORS configuration. 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    @Autowired
+    @Autowired  
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Autowired

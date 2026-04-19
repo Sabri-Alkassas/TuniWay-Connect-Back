@@ -16,7 +16,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
+// Initial implementation of JwtAuthenticationFilter to validate JWT tokens in incoming requests. The filter extracts the token from the Authorization header, validates it using the JwtService, and sets the authentication context if the token is valid. If the token is invalid or missing, the filter allows the request to proceed without authentication, which will be handled by Spring Security's access control mechanisms.
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 

@@ -48,6 +48,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+// Unit tests for ClientService to verify the correctness of business logic related to client dashboard retrieval, account updates, and transport departure retrieval. The tests use Mockito to mock dependencies and verify interactions with repositories and services. Each test case focuses on a specific aspect of the ClientService functionality, ensuring that the service behaves as expected under various scenarios, including edge cases and error conditions.
 @ExtendWith(MockitoExtension.class)
 class ClientServiceTest {
 

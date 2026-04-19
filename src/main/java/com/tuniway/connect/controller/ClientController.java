@@ -32,9 +32,10 @@ import java.security.Principal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+// Initial implementation of ClientController to handle client-related endpoints such as retrieving dashboard information, managing account details, searching for transports, and purchasing tickets. Each endpoint is designed to handle specific client operations and return appropriate responses based on the success or failure of the operations. The endpoints are secured with role-based access control to ensure that only authenticated clients can access them.
 @RestController
 @RequestMapping("/api/v1/client")
-public class ClientController {
+public class ClientController { // Controller to handle client-related endpoints such as retrieving dashboard information, managing account details, searching for transports, and purchasing tickets. Each endpoint is designed to handle specific client operations and return appropriate responses based on the success or failure of the operations. The endpoints are secured with role-based access control to ensure that only authenticated clients can access them.
 
     @Autowired
     private ClientService clientService;
@@ -44,8 +45,8 @@ public class ClientController {
 
     @PreAuthorize("hasRole('CLIENT')")
     @GetMapping("/dashboard")
-    public ResponseEntity<ClientDashboardResponse> getDashboard(Principal principal) {
-        try {
+    public ResponseEntity<ClientDashboardResponse> getDashboard(Principal principal) { // Endpoint to retrieve the client's dashboard information. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
+        try { 
             User user = requireAuthenticatedUser(principal);
             ClientDashboardResponse response = clientService.getDashboard(user.getId());
             return new ResponseEntity<>(response, HttpStatus.OK);
@@ -59,7 +60,7 @@ public class ClientController {
 
     @PreAuthorize("hasRole('CLIENT')")
     @GetMapping("/account")
-    public ResponseEntity<ClientAccountResponse> getAccount(Principal principal) {
+    public ResponseEntity<ClientAccountResponse> getAccount(Principal principal) { // Endpoint to retrieve the client's account details. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             ClientAccountResponse response = clientService.getAccount(user.getId());
@@ -75,7 +76,7 @@ public class ClientController {
     @PreAuthorize("hasRole('CLIENT')")
     @PatchMapping("/account")
     public ResponseEntity<ClientAccountResponse> updateAccount(@RequestBody UpdateClientAccountRequest request,
-                                                               Principal principal) {
+                                                               Principal principal) { // Endpoint to update the client's account details. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             ClientAccountResponse response = clientService.updateAccount(user.getId(), request);
@@ -93,7 +94,7 @@ public class ClientController {
     public ResponseEntity<ClientTicketProductsResponse> getTicketProducts(@RequestParam UUID transportId,
                                                                           @RequestParam UUID fromStopId,
                                                                           @RequestParam UUID toStopId,
-                                                                          Principal principal) {
+                                                                          Principal principal) { // Endpoint to search for available ticket products based on transport and stop information. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             ClientTicketProductsResponse response = clientService.getTicketProducts(
@@ -114,7 +115,7 @@ public class ClientController {
     @PreAuthorize("hasRole('CLIENT')")
     @PostMapping("/tickets/purchase")
     public ResponseEntity<ClientTicketPurchaseResponse> purchaseTicket(@RequestBody PurchaseClientTicketRequest request,
-                                                                       Principal principal) {
+                                                                       Principal principal) { // Endpoint to purchase a ticket. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             ClientTicketPurchaseResponse response = clientService.purchaseTicket(user.getId(), request);
@@ -132,7 +133,7 @@ public class ClientController {
     public ResponseEntity<ClientTicketHistoryResponse> getTicketHistory(@RequestParam(defaultValue = "0") int page,
                                                                         @RequestParam(defaultValue = "20") int size,
                                                                         @RequestParam(defaultValue = "purchaseTime,desc") String sort,
-                                                                        Principal principal) {
+                                                                        Principal principal) { // Endpoint to retrieve the client's ticket history. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             User user = requireAuthenticatedUser(principal);
             ClientTicketHistoryResponse response = clientService.getTicketHistory(user.getId(), page, size, sort);
@@ -173,7 +174,7 @@ public class ClientController {
         @RequestParam double lat,
         @RequestParam double lng,
         @RequestParam(required = false, defaultValue = "500") Integer radiusMeters
-    ) {
+    ) { // Endpoint to retrieve nearby transports based on the client's location. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             ClientNearbyTransportsResponse response = clientService.getNearbyTransports(lat, lng, radiusMeters);
             return new ResponseEntity<>(response, HttpStatus.OK);
@@ -187,7 +188,7 @@ public class ClientController {
 
     @PreAuthorize("hasRole('CLIENT')")
     @GetMapping("/transports/{id}")
-    public ResponseEntity<ClientTransportDetailsResponse> getTransport(@PathVariable("id") UUID transportId) {
+    public ResponseEntity<ClientTransportDetailsResponse> getTransport(@PathVariable("id") UUID transportId) { // Endpoint to retrieve detailed information about a specific transport. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             ClientTransportDetailsResponse response = clientService.getTransport(transportId);
             return new ResponseEntity<>(response, HttpStatus.OK);
@@ -201,7 +202,7 @@ public class ClientController {
 
     @PreAuthorize("hasRole('CLIENT')")
     @GetMapping("/transports/{id}/stops")
-    public ResponseEntity<ClientTransportStopsResponse> getTransportStops(@PathVariable("id") UUID transportId) {
+    public ResponseEntity<ClientTransportStopsResponse> getTransportStops(@PathVariable("id") UUID transportId) { // Endpoint to retrieve the stops associated with a specific transport. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             ClientTransportStopsResponse response = clientService.getTransportStops(transportId);
             return new ResponseEntity<>(response, HttpStatus.OK);
@@ -217,7 +218,7 @@ public class ClientController {
     @PreAuthorize("hasRole('CLIENT')")
     @GetMapping("/transports/{id}/departures")
     public ResponseEntity<ClientTransportDeparturesResponse> getTransportDepartures(@PathVariable("id") UUID transportId,
-                                                                                    @RequestParam LocalDate date) {
+                                                                                    @RequestParam LocalDate date) { // Endpoint to retrieve the departure times for a specific transport on a given date. The endpoint is secured with role-based access control to ensure that only authenticated clients can access it. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         try {
             ClientTransportDeparturesResponse response = clientService.getTransportDepartures(transportId, date);
             return new ResponseEntity<>(response, HttpStatus.OK);
@@ -231,7 +232,7 @@ public class ClientController {
         }
     }
 
-    private User requireAuthenticatedUser(Principal principal) {
+    private User requireAuthenticatedUser(Principal principal) { // Helper method to retrieve the authenticated user based on the provided Principal. If the Principal is null or does not contain a valid email, a RuntimeException is thrown indicating that the request is unauthenticated. If the user is not found in the database, a RuntimeException is thrown indicating that the user was not found.
         if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
             throw new RuntimeException("Unauthenticated request");
         }
