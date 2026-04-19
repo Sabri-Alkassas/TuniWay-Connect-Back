@@ -39,4 +39,5 @@ GRANT ALL PRIVILEGES ON DATABASE tuniway\_db TO tuniway\_admin;
 
 ###### 
 
-###### Puis executer le command mvn springboot:run
+Ces commandes SQL doivent être exécutées avec un compte PostgreSQL qui a les droits suffisants, souvent l’utilisateur postgres, pas forcément tuniway_admin.
+###### Puis executer le command mvn spring-boot:run
