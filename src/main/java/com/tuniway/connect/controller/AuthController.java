@@ -104,7 +104,7 @@ public class AuthController { // Controller to handle authentication-related end
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<LogoutResponse> logout(@RequestBody(required = false) LogoutRequest request) {
+    public ResponseEntity<LogoutResponse> logout(@RequestBody(required = false) LogoutRequest request) {// Endpoint to logout a user. The request body may contain details related to the logout operation. The response is wrapped in a try-catch block to handle any potential runtime exceptions and return appropriate error messages in the response body.
         LogoutResponse response = userService.logout(request);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
